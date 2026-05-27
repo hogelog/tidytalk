@@ -101,6 +101,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Lets debug and release variants coexist on the same device.
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = false
         }
