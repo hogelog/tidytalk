@@ -57,6 +57,7 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
             loading = vm.overviewLoading,
             onOpenRoot = { vm.openDir(StorageScanner.rootDir()) },
             onOpenCategory = { vm.openDir(it.dir) },
+            onOpenCategoryAi = { vm.openAiFlow(it.dir) },
             onRefresh = vm::refresh,
         )
 
@@ -73,6 +74,28 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
                 onToggleSelect = vm::toggleSelect,
                 onRefresh = vm::refresh,
                 onDelete = vm::deleteSelected,
+                onOpenAi = { vm.openAiFlow(screen.dir) },
+            )
+        }
+
+        is Screen.AiFlow -> {
+            BackHandler { vm.back() }
+            AiFlowScreen(
+                dir = screen.dir,
+                loading = vm.aiLoading,
+                prompt = vm.aiPrompt,
+                answer = vm.aiAnswer,
+                matched = vm.aiMatched,
+                invalidIds = vm.aiInvalidIds,
+                noIds = vm.aiNoIds,
+                selected = vm.aiSelected,
+                selectedBytes = vm.aiSelectedBytes,
+                onBack = { vm.back() },
+                onRefresh = vm::refresh,
+                onAnswerChange = vm::updateAiAnswer,
+                onParse = vm::parseAnswer,
+                onToggleSelect = vm::toggleAiSelect,
+                onDelete = vm::deleteAiSelected,
             )
         }
     }
