@@ -20,12 +20,15 @@ import org.hogel.tidytalk.data.DeviceStorage
 import org.hogel.tidytalk.data.InstalledApp
 import org.hogel.tidytalk.data.InstalledAppsScanner
 import org.hogel.tidytalk.data.PromptFileCount
+import org.hogel.tidytalk.data.PromptItem
 import org.hogel.tidytalk.data.StorageCategory
 import org.hogel.tidytalk.data.StorageEntry
 import org.hogel.tidytalk.data.StorageScanner
 import org.hogel.tidytalk.data.TidyTalkSettings
+import org.hogel.tidytalk.data.appsSnapshot
 import org.hogel.tidytalk.data.buildAiPrompt
 import org.hogel.tidytalk.data.buildAppsAiPrompt
+import org.hogel.tidytalk.data.fileSnapshot
 import org.hogel.tidytalk.data.parseAnswerIds
 import java.io.File
 
@@ -82,13 +85,13 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     var aiPromptFileCount by mutableStateOf(PromptFileCount.DEFAULT)
         private set
 
-    /** index+1 == ID printed in [aiPrompt]; used to resolve parsed IDs back to files. */
-    private var aiSnapshot: List<File> = emptyList()
+    /** ID-to-file map used in [aiPrompt]; used to resolve parsed IDs back to files. */
+    private var aiSnapshot: List<PromptItem<File>> = emptyList()
 
     /** Files the parsed answer mapped to (post-parse). `null` until [parseAnswer] runs successfully. */
     var aiMatched by mutableStateOf<List<File>?>(null)
         private set
-    var aiInvalidIds by mutableStateOf<List<Int>>(emptyList())
+    var aiInvalidIds by mutableStateOf<List<String>>(emptyList())
         private set
     var aiNoIds by mutableStateOf(false)
         private set
@@ -110,13 +113,13 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         private set
     var aiAppsMatched by mutableStateOf<List<InstalledApp>?>(null)
         private set
-    var aiAppsInvalidIds by mutableStateOf<List<Int>>(emptyList())
+    var aiAppsInvalidIds by mutableStateOf<List<String>>(emptyList())
         private set
     var aiAppsNoIds by mutableStateOf(false)
         private set
     var aiAppsSelected by mutableStateOf<Set<String>>(emptySet())
         private set
-    private var aiAppsSnapshot: List<InstalledApp> = emptyList()
+    private var aiAppsSnapshot: List<PromptItem<InstalledApp>> = emptyList()
 
     /** Head of the per-package sequential uninstall queue; `null` when idle. */
     var currentUninstall by mutableStateOf<String?>(null)
@@ -263,7 +266,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             if (parentPath == rootPath) return@filter true
             enabledPaths.any { file.absolutePath.startsWith(it) }
         }
-        aiSnapshot = filtered.sortedByDescending { it.length() }.take(aiPromptFileCount)
+        val topFiles = filtered.sortedByDescending { it.length() }.take(aiPromptFileCount)
+        aiSnapshot = fileSnapshot(topFiles)
         aiPrompt = buildAiPrompt(aiInstruction, dir, aiSnapshot)
     }
 
@@ -295,7 +299,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun parseAnswer() {
-        when (val result = parseAnswerIds(aiAnswer, aiSnapshot.size)) {
+        val byId = aiSnapshot.associate { it.id to it.value }
+        when (val result = parseAnswerIds(aiAnswer, byId.keys)) {
             AnswerParseResult.NoIds -> {
                 aiNoIds = true
                 aiMatched = null
@@ -304,7 +309,7 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             }
 
             is AnswerParseResult.Ok -> {
-                val files = result.validIds.map { aiSnapshot[it - 1] }
+                val files = result.validIds.mapNotNull { byId[it] }
                 aiMatched = files
                 aiInvalidIds = result.invalidIds
                 aiNoIds = false
@@ -399,7 +404,7 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun rebuildAppsAiPrompt() {
-        aiAppsSnapshot = apps
+        aiAppsSnapshot = appsSnapshot(apps)
         aiAppsPrompt = buildAppsAiPrompt(aiAppsInstruction, aiAppsSnapshot)
     }
 
@@ -423,7 +428,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun parseAppsAnswer() {
-        when (val result = parseAnswerIds(aiAppsAnswer, aiAppsSnapshot.size)) {
+        val byId = aiAppsSnapshot.associate { it.id to it.value }
+        when (val result = parseAnswerIds(aiAppsAnswer, byId.keys)) {
             AnswerParseResult.NoIds -> {
                 aiAppsNoIds = true
                 aiAppsMatched = null
@@ -432,7 +438,7 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             }
 
             is AnswerParseResult.Ok -> {
-                val matched = result.validIds.map { aiAppsSnapshot[it - 1] }
+                val matched = result.validIds.mapNotNull { byId[it] }
                 aiAppsMatched = matched
                 aiAppsInvalidIds = result.invalidIds
                 aiAppsNoIds = false

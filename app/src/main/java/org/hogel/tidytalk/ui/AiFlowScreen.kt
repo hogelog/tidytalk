@@ -73,7 +73,7 @@ fun AiFlowScreen(
     subdirs: List<File>,
     subdirEnabled: Set<File>,
     matched: List<File>?,
-    invalidIds: List<Int>,
+    invalidIds: List<String>,
     noIds: Boolean,
     selected: Set<File>,
     selectedBytes: Long,
@@ -351,7 +351,7 @@ private fun AnswerSection(
 }
 
 @Composable
-private fun ResultsHeader(matchedCount: Int, invalidIds: List<Int>) {
+private fun ResultsHeader(matchedCount: Int, invalidIds: List<String>) {
     Column {
         Text("3. 削除候補（人が最終判断）", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
@@ -362,7 +362,7 @@ private fun ResultsHeader(matchedCount: Int, invalidIds: List<Int>) {
         )
         if (invalidIds.isNotEmpty()) {
             Text(
-                "範囲外の ID は無視しました: ${invalidIds.joinToString(", ")}",
+                "未知の ID は無視しました: ${invalidIds.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

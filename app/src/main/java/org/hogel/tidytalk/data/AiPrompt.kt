@@ -25,28 +25,44 @@ fun humanBytes(bytes: Long): String {
 const val DEFAULT_AI_INSTRUCTION =
     "TidyTalk からの掃除相談です。以下のファイル一覧から、削除しても良さそうなもの\n" +
         "（古いダウンロード、明らかなゴミ、重複疑い等）を判断してください。\n" +
-        "回答は、削除推奨ファイルの番号 ID をカンマか改行区切りでコードブロック\n" +
-        "(```...```) に入れて返してください（チャット UI のコピー機能がそのまま\n" +
-        "使えます）。理由のコメントは自由です。"
+        "回答は、削除推奨ファイルの ID（行頭の英数字 6〜8 文字）をカンマか改行区切り\n" +
+        "でコードブロック (```...```) に入れて返してください（チャット UI のコピー\n" +
+        "機能がそのまま使えます）。理由のコメントは自由です。"
+
+/** A prompt-time mapping from stable ID to the item it describes. */
+data class PromptItem<T>(val id: String, val value: T)
+
+private fun <T> buildSnapshot(values: List<T>, key: (T) -> String): List<PromptItem<T>> {
+    val ids = assignStableIds(values.map(key))
+    return values.map { PromptItem(ids.getValue(key(it)), it) }
+}
+
+/** Snapshot for the file AI flow; ID is derived from each file's absolute path. */
+fun fileSnapshot(files: List<File>): List<PromptItem<File>> =
+    buildSnapshot(files) { it.absolutePath }
+
+/** Snapshot for the apps AI flow; ID is derived from each app's package name. */
+fun appsSnapshot(apps: List<InstalledApp>): List<PromptItem<InstalledApp>> =
+    buildSnapshot(apps) { it.packageName }
 
 /**
  * Builds the prompt the user copy-pastes to their chat AI. [instruction] is the
- * editable lead-in; the auto-generated file list follows with 1-based IDs the
+ * editable lead-in; the auto-generated file list follows with stable IDs the
  * AI echoes back inside a fenced code block.
  */
-fun buildAiPrompt(instruction: String, targetDir: File, files: List<File>): String {
+fun buildAiPrompt(instruction: String, targetDir: File, snapshot: List<PromptItem<File>>): String {
     val rootPath = targetDir.absolutePath
     val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     return buildString {
         append(instruction.trimEnd())
         append("\n\n")
-        append("対象: ${targetDir.name}（容量上位 ${files.size} 件まで）\n")
+        append("対象: ${targetDir.name}（容量上位 ${snapshot.size} 件まで）\n")
         append("--\n")
-        files.forEachIndexed { i, f ->
+        snapshot.forEach { (id, f) ->
             val rel = f.absolutePath.removePrefix("$rootPath/").ifEmpty { f.name }
             val size = humanBytes(f.length())
             val date = dateFmt.format(Date(f.lastModified()))
-            append("[${i + 1}] $size  $date  $rel\n")
+            append("$id  $size  $date  $rel\n")
         }
     }
 }
@@ -55,45 +71,51 @@ fun buildAiPrompt(instruction: String, targetDir: File, files: List<File>): Stri
 const val DEFAULT_APPS_AI_INSTRUCTION =
     "TidyTalk からの掃除相談です。以下のインストール済みアプリ一覧から、\n" +
         "アンインストールしても良さそうなもの（使っていない、重複、容量が大きすぎる等）\n" +
-        "を判断してください。回答は、アンインストール推奨アプリの番号 ID を\n" +
-        "カンマか改行区切りでコードブロック (```...```) に入れて返してください\n" +
-        "（チャット UI のコピー機能がそのまま使えます）。理由のコメントは自由です。"
+        "を判断してください。回答は、アンインストール推奨アプリの ID（行頭の英数字\n" +
+        "6〜8 文字）をカンマか改行区切りでコードブロック (```...```) に入れて返して\n" +
+        "ください（チャット UI のコピー機能がそのまま使えます）。理由のコメントは自由です。"
 
 /**
- * Apps version of [buildAiPrompt]. Enumerates installed apps with 1-based IDs
+ * Apps version of [buildAiPrompt]. Enumerates installed apps with stable IDs
  * that the AI echoes back inside a fenced code block.
  */
-fun buildAppsAiPrompt(instruction: String, apps: List<InstalledApp>): String =
+fun buildAppsAiPrompt(instruction: String, snapshot: List<PromptItem<InstalledApp>>): String =
     buildString {
         append(instruction.trimEnd())
         append("\n\n")
-        append("対象: インストール済みアプリ ${apps.size} 件\n")
+        append("対象: インストール済みアプリ ${snapshot.size} 件\n")
         append("--\n")
-        apps.forEachIndexed { i, app ->
+        snapshot.forEach { (id, app) ->
             val size = humanBytes(app.sizeBytes)
-            append("[${i + 1}] $size  ${app.packageName}  ${app.label}\n")
+            append("$id  $size  ${app.packageName}  ${app.label}\n")
         }
     }
 
 sealed interface AnswerParseResult {
     data object NoIds : AnswerParseResult
-    data class Ok(val validIds: List<Int>, val invalidIds: List<Int>) : AnswerParseResult
+    data class Ok(val validIds: List<String>, val invalidIds: List<String>) : AnswerParseResult
 }
 
 private val codeBlockRegex = Regex("""```[\s\S]*?```""")
-private val intRegex = Regex("""\d+""")
+
+/**
+ * Matches base62 tokens of length 6–8 not adjacent to other base62 chars, which
+ * covers both default-width and collision-widened IDs without false positives
+ * on longer alphanumeric runs.
+ */
+private val idTokenRegex = Regex("""(?<![0-9A-Za-z])[0-9A-Za-z]{6,8}(?![0-9A-Za-z])""")
 
 /**
  * Pulls IDs out of [answer]. Prefers the first fenced code block (the format
  * the prompt asks the AI to use); falls back to scanning the whole text so
  * that pasting just the code-block contents — what most chat UIs' Copy
- * buttons return — also works. IDs outside `1..maxId` are reported as invalid
- * so the UI can show what was dropped.
+ * buttons return — also works. IDs not present in [knownIds] are reported as
+ * invalid so the UI can show what was dropped.
  */
-fun parseAnswerIds(answer: String, maxId: Int): AnswerParseResult {
+fun parseAnswerIds(answer: String, knownIds: Set<String>): AnswerParseResult {
     val source = codeBlockRegex.find(answer)?.value ?: answer
-    val all = intRegex.findAll(source).mapNotNull { it.value.toIntOrNull() }.distinct().toList()
+    val all = idTokenRegex.findAll(source).map { it.value }.distinct().toList()
     if (all.isEmpty()) return AnswerParseResult.NoIds
-    val (valid, invalid) = all.partition { it in 1..maxId }
+    val (valid, invalid) = all.partition { it in knownIds }
     return AnswerParseResult.Ok(valid, invalid)
 }
