@@ -1,5 +1,7 @@
 package org.hogel.tidytalk.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -368,6 +370,7 @@ private fun ResultsHeader(matchedCount: Int, invalidIds: List<Int>) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MatchedFileRow(
     file: File,
@@ -378,8 +381,15 @@ private fun MatchedFileRow(
     val context = LocalContext.current
     val rel = file.absolutePath.removePrefix("$rootPath/").ifEmpty { file.name }
     val previewKind = previewKindFor(file)
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .combinedClickable(
+            onClick = onToggle,
+            onLongClick = { openFileExternally(context, file) },
+        )
+        .padding(end = 8.dp)
     Row(
-        modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
