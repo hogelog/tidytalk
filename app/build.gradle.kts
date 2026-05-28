@@ -10,6 +10,10 @@ val gitShortRev: String = providers.exec {
     isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }.getOrElse("unknown")
 
+fun requireEnv(name: String): String =
+    System.getenv(name)?.takeIf { it.isNotBlank() }
+        ?: error("Required environment variable $name is missing or empty.")
+
 val prNumber: String? = System.getenv("PR_NUMBER")?.takeIf { it.isNotBlank() }
 val releaseVersion: String? = System.getenv("RELEASE_VERSION")?.takeIf { it.isNotBlank() }
 val releaseVersionSuffix: String? = System.getenv("RELEASE_VERSION_SUFFIX")?.takeIf { it.isNotBlank() }
@@ -98,6 +102,17 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Release signing is wired up only when the keystore env vars are present,
+        // so assembleRelease still works (unsigned) without release credentials.
+        val releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = requireEnv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = requireEnv("RELEASE_KEY_ALIAS")
+                keyPassword = requireEnv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -107,6 +122,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
