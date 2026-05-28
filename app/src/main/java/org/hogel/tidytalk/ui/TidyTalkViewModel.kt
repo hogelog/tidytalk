@@ -15,13 +15,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.hogel.tidytalk.data.AnswerParseResult
 import org.hogel.tidytalk.data.DEFAULT_AI_INSTRUCTION
+import org.hogel.tidytalk.data.DEFAULT_APPS_AI_INSTRUCTION
 import org.hogel.tidytalk.data.DeviceStorage
+import org.hogel.tidytalk.data.InstalledApp
+import org.hogel.tidytalk.data.InstalledAppsScanner
 import org.hogel.tidytalk.data.PromptFileCount
+import org.hogel.tidytalk.data.PromptItem
 import org.hogel.tidytalk.data.StorageCategory
 import org.hogel.tidytalk.data.StorageEntry
 import org.hogel.tidytalk.data.StorageScanner
 import org.hogel.tidytalk.data.TidyTalkSettings
+import org.hogel.tidytalk.data.appsSnapshot
 import org.hogel.tidytalk.data.buildAiPrompt
+import org.hogel.tidytalk.data.buildAppsAiPrompt
+import org.hogel.tidytalk.data.fileSnapshot
 import org.hogel.tidytalk.data.parseAnswerIds
 import java.io.File
 
@@ -29,6 +36,8 @@ sealed interface Screen {
     data object Overview : Screen
     data class Browse(val dir: File) : Screen
     data class AiFlow(val dir: File) : Screen
+    data object Apps : Screen
+    data object AppsAi : Screen
 }
 
 class TidyTalkViewModel(application: Application) : AndroidViewModel(application) {
@@ -76,18 +85,46 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     var aiPromptFileCount by mutableStateOf(PromptFileCount.DEFAULT)
         private set
 
-    /** index+1 == ID printed in [aiPrompt]; used to resolve parsed IDs back to files. */
-    private var aiSnapshot: List<File> = emptyList()
+    /** ID-to-file map used in [aiPrompt]; used to resolve parsed IDs back to files. */
+    private var aiSnapshot: List<PromptItem<File>> = emptyList()
 
     /** Files the parsed answer mapped to (post-parse). `null` until [parseAnswer] runs successfully. */
     var aiMatched by mutableStateOf<List<File>?>(null)
         private set
-    var aiInvalidIds by mutableStateOf<List<Int>>(emptyList())
+    var aiInvalidIds by mutableStateOf<List<String>>(emptyList())
         private set
     var aiNoIds by mutableStateOf(false)
         private set
     var aiSelected by mutableStateOf<Set<File>>(emptySet())
         private set
+
+    var apps by mutableStateOf<List<InstalledApp>>(emptyList())
+        private set
+    var appsLoading by mutableStateOf(false)
+        private set
+    var appsSelected by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    var aiAppsInstruction by mutableStateOf(DEFAULT_APPS_AI_INSTRUCTION)
+        private set
+    var aiAppsPrompt by mutableStateOf("")
+        private set
+    var aiAppsAnswer by mutableStateOf("")
+        private set
+    var aiAppsMatched by mutableStateOf<List<InstalledApp>?>(null)
+        private set
+    var aiAppsInvalidIds by mutableStateOf<List<String>>(emptyList())
+        private set
+    var aiAppsNoIds by mutableStateOf(false)
+        private set
+    var aiAppsSelected by mutableStateOf<Set<String>>(emptySet())
+        private set
+    private var aiAppsSnapshot: List<PromptItem<InstalledApp>> = emptyList()
+
+    /** Head of the per-package sequential uninstall queue; `null` when idle. */
+    var currentUninstall by mutableStateOf<String?>(null)
+        private set
+    private var uninstallQueue: List<String> = emptyList()
 
     private var loadJob: Job? = null
     private var started = false
@@ -128,6 +165,18 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         loadAiFlow(dir)
     }
 
+    fun openApps() {
+        backStack.add(Screen.Apps)
+        screen = backStack.last()
+        loadApps()
+    }
+
+    fun openAppsAi() {
+        backStack.add(Screen.AppsAi)
+        screen = backStack.last()
+        loadAppsAi()
+    }
+
     /** Pops one level. Returns false when already at the root (let the system handle back). */
     fun back(): Boolean {
         if (backStack.size <= 1) return false
@@ -144,6 +193,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             Screen.Overview -> loadOverview()
             is Screen.Browse -> loadBrowse(s.dir)
             is Screen.AiFlow -> loadAiFlow(s.dir)
+            Screen.Apps -> loadApps()
+            Screen.AppsAi -> loadAppsAi()
         }
     }
 
@@ -157,6 +208,12 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
                 dirs.map { (label, dir) -> async { StorageScanner.scanCategory(label, dir) } }.awaitAll()
             }
             overviewLoading = false
+        }
+        // Apps summary scan runs in parallel; needs Usage access for sizes.
+        viewModelScope.launch {
+            apps = withContext(Dispatchers.IO) {
+                InstalledAppsScanner.loadInstalledApps(getApplication())
+            }
         }
     }
 
@@ -209,7 +266,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             if (parentPath == rootPath) return@filter true
             enabledPaths.any { file.absolutePath.startsWith(it) }
         }
-        aiSnapshot = filtered.sortedByDescending { it.length() }.take(aiPromptFileCount)
+        val topFiles = filtered.sortedByDescending { it.length() }.take(aiPromptFileCount)
+        aiSnapshot = fileSnapshot(topFiles)
         aiPrompt = buildAiPrompt(aiInstruction, dir, aiSnapshot)
     }
 
@@ -241,7 +299,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun parseAnswer() {
-        when (val result = parseAnswerIds(aiAnswer, aiSnapshot.size)) {
+        val byId = aiSnapshot.associate { it.id to it.value }
+        when (val result = parseAnswerIds(aiAnswer, byId.keys)) {
             AnswerParseResult.NoIds -> {
                 aiNoIds = true
                 aiMatched = null
@@ -250,7 +309,7 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             }
 
             is AnswerParseResult.Ok -> {
-                val files = result.validIds.map { aiSnapshot[it - 1] }
+                val files = result.validIds.mapNotNull { byId[it] }
                 aiMatched = files
                 aiInvalidIds = result.invalidIds
                 aiNoIds = false
@@ -293,6 +352,136 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             withContext(Dispatchers.IO) { targets.forEach { it.deleteRecursively() } }
             selected = emptySet()
+            reloadCurrent()
+        }
+    }
+
+    private fun loadApps() {
+        loadJob?.cancel()
+        appsLoading = true
+        apps = emptyList()
+        appsSelected = emptySet()
+        loadJob = viewModelScope.launch {
+            apps = withContext(Dispatchers.IO) {
+                InstalledAppsScanner.loadInstalledApps(getApplication())
+            }
+            appsLoading = false
+        }
+    }
+
+    fun toggleAppSelect(packageName: String) {
+        appsSelected = if (packageName in appsSelected) {
+            appsSelected - packageName
+        } else {
+            appsSelected + packageName
+        }
+    }
+
+    val appsSelectedBytes: Long
+        get() = apps.filter { it.packageName in appsSelected }.sumOf { it.sizeBytes }
+
+    val appsTotalBytes: Long
+        get() = apps.sumOf { it.sizeBytes }
+
+    private fun loadAppsAi() {
+        loadJob?.cancel()
+        appsLoading = true
+        aiAppsInstruction = DEFAULT_APPS_AI_INSTRUCTION
+        aiAppsPrompt = ""
+        aiAppsAnswer = ""
+        aiAppsMatched = null
+        aiAppsInvalidIds = emptyList()
+        aiAppsNoIds = false
+        aiAppsSelected = emptySet()
+        aiAppsSnapshot = emptyList()
+        loadJob = viewModelScope.launch {
+            apps = withContext(Dispatchers.IO) {
+                InstalledAppsScanner.loadInstalledApps(getApplication())
+            }
+            rebuildAppsAiPrompt()
+            appsLoading = false
+        }
+    }
+
+    private fun rebuildAppsAiPrompt() {
+        aiAppsSnapshot = appsSnapshot(apps)
+        aiAppsPrompt = buildAppsAiPrompt(aiAppsInstruction, aiAppsSnapshot)
+    }
+
+    fun updateAiAppsInstruction(text: String) {
+        aiAppsInstruction = text
+        aiAppsPrompt = buildAppsAiPrompt(text, aiAppsSnapshot)
+    }
+
+    fun updateAiAppsAnswer(text: String) {
+        aiAppsAnswer = text
+        invalidateAppsAiParse()
+    }
+
+    private fun invalidateAppsAiParse() {
+        if (aiAppsMatched != null || aiAppsNoIds) {
+            aiAppsMatched = null
+            aiAppsInvalidIds = emptyList()
+            aiAppsNoIds = false
+            aiAppsSelected = emptySet()
+        }
+    }
+
+    fun parseAppsAnswer() {
+        val byId = aiAppsSnapshot.associate { it.id to it.value }
+        when (val result = parseAnswerIds(aiAppsAnswer, byId.keys)) {
+            AnswerParseResult.NoIds -> {
+                aiAppsNoIds = true
+                aiAppsMatched = null
+                aiAppsInvalidIds = emptyList()
+                aiAppsSelected = emptySet()
+            }
+
+            is AnswerParseResult.Ok -> {
+                val matched = result.validIds.mapNotNull { byId[it] }
+                aiAppsMatched = matched
+                aiAppsInvalidIds = result.invalidIds
+                aiAppsNoIds = false
+                aiAppsSelected = matched.map { it.packageName }.toSet()
+            }
+        }
+    }
+
+    fun toggleAiAppsSelect(packageName: String) {
+        aiAppsSelected = if (packageName in aiAppsSelected) {
+            aiAppsSelected - packageName
+        } else {
+            aiAppsSelected + packageName
+        }
+    }
+
+    val aiAppsSelectedBytes: Long
+        get() = (aiAppsMatched ?: emptyList())
+            .filter { it.packageName in aiAppsSelected }
+            .sumOf { it.sizeBytes }
+
+    /** Queues all manually-selected packages and surfaces the first via [currentUninstall]. */
+    fun requestUninstallSelected() = enqueueUninstall(appsSelected)
+
+    /** Queues all AI-matched + user-confirmed packages and surfaces the first via [currentUninstall]. */
+    fun requestUninstallFromAi() = enqueueUninstall(aiAppsSelected)
+
+    private fun enqueueUninstall(packages: Set<String>) {
+        if (packages.isEmpty() || currentUninstall != null) return
+        uninstallQueue = packages.toList()
+        currentUninstall = uninstallQueue.first()
+    }
+
+    /** Called after the system uninstall dialog returns (regardless of user choice). */
+    fun onUninstallFinished() {
+        if (uninstallQueue.isEmpty()) return
+        val rest = uninstallQueue.drop(1)
+        uninstallQueue = rest
+        currentUninstall = rest.firstOrNull()
+        if (rest.isEmpty()) {
+            // Some or all may have actually been removed; the list refresh is the source of truth.
+            appsSelected = emptySet()
+            aiAppsSelected = emptySet()
             reloadCurrent()
         }
     }

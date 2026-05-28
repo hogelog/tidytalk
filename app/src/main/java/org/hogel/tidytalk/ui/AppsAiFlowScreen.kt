@@ -1,7 +1,14 @@
 package org.hogel.tidytalk.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import android.content.ClipData
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,7 +34,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,14 +49,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import android.content.ClipData
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -58,46 +65,59 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.launch
-import org.hogel.tidytalk.data.PromptFileCount
-import java.io.File
+import org.hogel.tidytalk.data.InstalledApp
+import org.hogel.tidytalk.data.InstalledAppsScanner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiFlowScreen(
-    dir: File,
+fun AppsAiFlowScreen(
     loading: Boolean,
+    instruction: String,
     prompt: String,
     answer: String,
-    instruction: String,
-    subdirs: List<File>,
-    subdirEnabled: Set<File>,
-    matched: List<File>?,
+    matched: List<InstalledApp>?,
     invalidIds: List<String>,
     noIds: Boolean,
-    selected: Set<File>,
+    selected: Set<String>,
     selectedBytes: Long,
-    promptFileCount: Int,
-    onPromptFileCountChange: (Int) -> Unit,
+    currentUninstall: String?,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onInstructionChange: (String) -> Unit,
-    onToggleSubdir: (File) -> Unit,
     onAnswerChange: (String) -> Unit,
     onParse: () -> Unit,
-    onToggleSelect: (File) -> Unit,
-    onDelete: () -> Unit,
+    onToggleSelect: (String) -> Unit,
+    onRequestUninstall: () -> Unit,
+    onUninstallFinished: () -> Unit,
 ) {
     val context = LocalContext.current
+    var hasUsage by remember { mutableStateOf(InstalledAppsScanner.hasUsageAccess(context)) }
     val clipboard = LocalClipboard.current
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmUninstall by remember { mutableStateOf(false) }
+
+    val usageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        hasUsage = InstalledAppsScanner.hasUsageAccess(context)
+        if (hasUsage) onRefresh()
+    }
+    val uninstallLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        onUninstallFinished()
+    }
+    LaunchedEffect(currentUninstall) {
+        val pkg = currentUninstall ?: return@LaunchedEffect
+        val intent = Intent(Intent.ACTION_DELETE).apply {
+            data = Uri.fromParts("package", pkg, null)
+        }
+        uninstallLauncher.launch(intent)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI 掃除: ${dir.name}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = { Text("AI 掃除: アプリ", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
@@ -124,14 +144,18 @@ fun AiFlowScreen(
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        Button(onClick = { confirmDelete = true }) { Text("削除") }
+                        Button(onClick = { confirmUninstall = true }) { Text("アンインストール") }
                     }
                 }
             }
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (loading) {
+            if (!hasUsage) {
+                UsageGate(onGrant = {
+                    usageLauncher.launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                })
+            } else if (loading) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else {
                 LazyColumn(
@@ -140,18 +164,11 @@ fun AiFlowScreen(
                 ) {
                     item {
                         Spacer(Modifier.height(8.dp))
-                        InstructionSection(instruction, onInstructionChange)
-                    }
-                    if (subdirs.isNotEmpty()) {
-                        item {
-                            SubdirsSection(subdirs, subdirEnabled, onToggleSubdir, dir.absolutePath)
-                        }
+                        InstructionField(instruction, onInstructionChange)
                     }
                     item {
                         PromptSection(
                             prompt = prompt,
-                            fileCount = promptFileCount,
-                            onFileCountChange = onPromptFileCountChange,
                             onCopy = {
                                 scope.launch {
                                     clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("TidyTalk", prompt)))
@@ -161,7 +178,7 @@ fun AiFlowScreen(
                         )
                     }
                     item {
-                        AnswerSection(
+                        AnswerField(
                             answer = answer,
                             onAnswerChange = onAnswerChange,
                             noIds = noIds,
@@ -170,44 +187,48 @@ fun AiFlowScreen(
                     }
                     if (matched != null) {
                         item { ResultsHeader(matched.size, invalidIds) }
-                        items(matched, key = { it.path }) { file ->
-                            MatchedFileRow(
-                                file = file,
-                                checked = file in selected,
-                                onToggle = { onToggleSelect(file) },
-                                rootPath = dir.absolutePath,
+                        items(matched, key = { it.packageName }) { app ->
+                            MatchedAppRow(
+                                app = app,
+                                checked = app.packageName in selected,
+                                onToggle = { onToggleSelect(app.packageName) },
                             )
                             HorizontalDivider()
                         }
-                        item { Spacer(Modifier.height(80.dp)) }  // breathing room above bottomBar
+                        item { Spacer(Modifier.height(80.dp)) }
                     }
                 }
             }
         }
     }
 
-    if (confirmDelete) {
+    if (confirmUninstall) {
         AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("削除の確認") },
+            onDismissRequest = { confirmUninstall = false },
+            title = { Text("アンインストールの確認") },
             text = {
-                Text("選択した ${selected.size} 件（${formatSize(context, selectedBytes)}）を完全に削除します。元に戻せません。")
+                Text(
+                    "選択した ${selected.size} 件（${formatSize(context, selectedBytes)}）を順番にアンインストールします。" +
+                        "アプリごとにシステムの確認ダイアログが表示されます。",
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    confirmDelete = false
-                    onDelete()
-                }) { Text("削除") }
+                    confirmUninstall = false
+                    onRequestUninstall()
+                }) { Text("開始") }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") }
+                TextButton(onClick = { confirmUninstall = false }) { Text("キャンセル") }
             },
         )
     }
+
+    BackHandler(onBack = onBack)
 }
 
 @Composable
-private fun InstructionSection(instruction: String, onChange: (String) -> Unit) {
+private fun InstructionField(instruction: String, onChange: (String) -> Unit) {
     Column {
         Text("前文（AI への指示）", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
@@ -226,80 +247,20 @@ private fun InstructionSection(instruction: String, onChange: (String) -> Unit) 
 }
 
 @Composable
-private fun SubdirsSection(
-    subdirs: List<File>,
-    enabled: Set<File>,
-    onToggle: (File) -> Unit,
-    rootPath: String,
-) {
-    Column {
-        Text("対象サブディレクトリ", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "オフにしたサブディレクトリ配下のファイルはプロンプトに含めません。直下のファイルは常に対象です。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(4.dp))
-        Card {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                subdirs.forEachIndexed { i, sub ->
-                    val rel = sub.absolutePath.removePrefix("$rootPath/").ifEmpty { sub.name }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = sub in enabled, onCheckedChange = { onToggle(sub) })
-                        Text(
-                            rel,
-                            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (i < subdirs.lastIndex) HorizontalDivider()
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PromptSection(
-    prompt: String,
-    fileCount: Int,
-    onFileCountChange: (Int) -> Unit,
-    onCopy: () -> Unit,
-) {
+private fun PromptSection(prompt: String, onCopy: () -> Unit) {
     Column {
         Text("1. 生成プロンプト", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "下のテキストを ChatGPT や Claude などに貼り付けて、削除推奨の ID を返してもらってください。",
+            "下のテキストを ChatGPT や Claude などに貼り付けて、アンインストール推奨の ID を返してもらってください。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("ファイル数", style = MaterialTheme.typography.bodyMedium)
-            PromptFileCount.PRESETS.forEach { n ->
-                FilterChip(
-                    selected = n == fileCount,
-                    onClick = { onFileCountChange(n) },
-                    label = { Text("$n") },
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
         Card {
             SelectionContainer {
                 Text(
-                    text = prompt.ifEmpty { "対象ファイルがありません" },
+                    text = prompt.ifEmpty { "対象アプリがありません" },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
@@ -316,7 +277,7 @@ private fun PromptSection(
 }
 
 @Composable
-private fun AnswerSection(
+private fun AnswerField(
     answer: String,
     onAnswerChange: (String) -> Unit,
     noIds: Boolean,
@@ -353,16 +314,16 @@ private fun AnswerSection(
 @Composable
 private fun ResultsHeader(matchedCount: Int, invalidIds: List<String>) {
     Column {
-        Text("3. 削除候補（人が最終判断）", style = MaterialTheme.typography.titleMedium)
+        Text("3. アンインストール候補（人が最終判断）", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "$matchedCount 件にマッチしました。チェックを外したものは削除されません。",
+            "$matchedCount 件にマッチしました。チェックを外したものはアンインストールされません。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (invalidIds.isNotEmpty()) {
             Text(
-                "未知の ID は無視しました: ${invalidIds.joinToString(", ")}",
+                "未知の ID: ${invalidIds.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -370,49 +331,63 @@ private fun ResultsHeader(matchedCount: Int, invalidIds: List<String>) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MatchedFileRow(
-    file: File,
+private fun MatchedAppRow(
+    app: InstalledApp,
     checked: Boolean,
     onToggle: () -> Unit,
-    rootPath: String,
 ) {
     val context = LocalContext.current
-    val rel = file.absolutePath.removePrefix("$rootPath/").ifEmpty { file.name }
-    val previewKind = previewKindFor(file)
-    val rowModifier = Modifier
-        .fillMaxWidth()
-        .combinedClickable(
-            onClick = onToggle,
-            onLongClick = { openFileExternally(context, file) },
-        )
-        .padding(end = 8.dp)
+    val pm = context.packageManager
+    val icon = remember(app.packageName) {
+        runCatching { pm.getApplicationIcon(app.packageName).toBitmap(width = 96, height = 96) }.getOrNull()
+    }
     Row(
-        modifier = rowModifier,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
-        if (previewKind != PreviewKind.None) {
-            PreviewThumbnail(
-                file = file,
-                kind = previewKind,
-                onOpen = { openFileExternally(context, file) },
+        if (icon != null) {
+            Image(
+                bitmap = icon.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.size(12.dp))
         }
         Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
             Text(
-                rel,
+                app.label,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                formatSize(context, file.length()),
+                "${formatSize(context, app.sizeBytes)} ・ ${formatLastUsedLabel(app.lastUsedMillis)} ・ ${app.packageName}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+@Composable
+private fun UsageGate(onGrant: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "アプリごとの容量を取得するには、「使用履歴へのアクセス」権限を許可してください。",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.size(24.dp))
+        Button(onClick = onGrant) { Text("使用履歴へのアクセスを許可") }
     }
 }
