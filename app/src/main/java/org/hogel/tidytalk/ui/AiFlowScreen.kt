@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -275,11 +276,20 @@ private fun MatchedFileRow(
 ) {
     val context = LocalContext.current
     val rel = file.absolutePath.removePrefix("$rootPath/").ifEmpty { file.name }
+    val previewKind = previewKindFor(file)
     Row(
         modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        if (previewKind != PreviewKind.None) {
+            PreviewThumbnail(
+                file = file,
+                kind = previewKind,
+                onOpen = { openFileExternally(context, file) },
+            )
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
             Text(
                 rel,

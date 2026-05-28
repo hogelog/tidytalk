@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -146,11 +148,20 @@ private fun EntryRow(
     onOpen: () -> Unit,
 ) {
     val context = LocalContext.current
+    val previewKind = if (entry.isDirectory) PreviewKind.None else previewKindFor(entry.file)
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        if (previewKind != PreviewKind.None) {
+            PreviewThumbnail(
+                file = entry.file,
+                kind = previewKind,
+                onOpen = { openFileExternally(context, entry.file) },
+            )
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
             Text(
                 entry.name,
