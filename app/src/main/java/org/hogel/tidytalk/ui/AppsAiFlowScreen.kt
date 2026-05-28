@@ -366,7 +366,7 @@ private fun MatchedAppRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${formatSize(context, app.sizeBytes)} ・ ${app.packageName}",
+                "${formatSize(context, app.sizeBytes)} ・ ${formatLastUsedLabel(app.lastUsedMillis)} ・ ${app.packageName}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

@@ -70,10 +70,20 @@ fun buildAiPrompt(instruction: String, targetDir: File, snapshot: List<PromptIte
 /** Default instruction text for the apps AI flow. */
 const val DEFAULT_APPS_AI_INSTRUCTION =
     "TidyTalk からの掃除相談です。以下のインストール済みアプリ一覧から、\n" +
-        "アンインストールしても良さそうなもの（使っていない、重複、容量が大きすぎる等）\n" +
-        "を判断してください。回答は、アンインストール推奨アプリの ID（行頭の英数字\n" +
-        "6〜8 文字）をカンマか改行区切りでコードブロック (```...```) に入れて返して\n" +
-        "ください（チャット UI のコピー機能がそのまま使えます）。理由のコメントは自由です。"
+        "アンインストールしても良さそうなもの（最終起動が古い、使っていない、重複、\n" +
+        "容量が大きすぎる等）を判断してください。各行は\n" +
+        "「ID  容量  最終起動日（n/a は過去1年未起動）  パッケージ名  表示名」です。\n" +
+        "回答は、アンインストール推奨アプリの ID（行頭の英数字 6〜8 文字）を\n" +
+        "カンマか改行区切りでコードブロック (```...```) に入れて返してください\n" +
+        "（チャット UI のコピー機能がそのまま使えます）。理由のコメントは自由です。"
+
+/** Locale-independent "YYYY-MM-DD" (user's local zone) or "n/a" rendering for [InstalledApp.lastUsedMillis]. */
+fun formatLastUsed(millis: Long?): String =
+    if (millis != null && millis > 0) {
+        java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault()).toString()
+    } else {
+        "n/a"
+    }
 
 /**
  * Apps version of [buildAiPrompt]. Enumerates installed apps with stable IDs
@@ -87,7 +97,8 @@ fun buildAppsAiPrompt(instruction: String, snapshot: List<PromptItem<InstalledAp
         append("--\n")
         snapshot.forEach { (id, app) ->
             val size = humanBytes(app.sizeBytes)
-            append("$id  $size  ${app.packageName}  ${app.label}\n")
+            val lastUsed = formatLastUsed(app.lastUsedMillis)
+            append("$id  $size  $lastUsed  ${app.packageName}  ${app.label}\n")
         }
     }
 
