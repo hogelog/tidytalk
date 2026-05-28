@@ -37,11 +37,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Which inline preview, if any, to render for a file. */
-enum class PreviewKind { Image, Pdf, None }
+enum class PreviewKind { Image, Pdf, Video, None }
 
 fun previewKindFor(file: File): PreviewKind = when (file.extension.lowercase()) {
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif" -> PreviewKind.Image
     "pdf" -> PreviewKind.Pdf
+    "mp4", "mov", "mkv", "webm", "3gp", "m4v", "avi" -> PreviewKind.Video
     else -> PreviewKind.None
 }
 
@@ -90,6 +91,12 @@ fun PreviewThumbnail(
                 modifier = Modifier.fillMaxSize(),
             )
             PreviewKind.Pdf -> PdfThumbnail(file)
+            PreviewKind.Video -> AsyncImage(
+                model = file,
+                contentDescription = "動画プレビュー（タップで開く）",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
             PreviewKind.None -> Unit
         }
     }
