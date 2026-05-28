@@ -155,13 +155,13 @@ private fun EntryRow(
     val rowModifier = Modifier
         .fillMaxWidth()
         .let { base ->
-            if (previewKind != PreviewKind.None) {
+            if (entry.isDirectory) {
+                base.clickable(onClick = onOpen)
+            } else {
                 base.combinedClickable(
                     onClick = onOpen,
                     onLongClick = { openFileExternally(context, entry.file) },
                 )
-            } else {
-                base.clickable(onClick = onOpen)
             }
         }
         .padding(end = 8.dp)

@@ -383,16 +383,10 @@ private fun MatchedFileRow(
     val previewKind = previewKindFor(file)
     val rowModifier = Modifier
         .fillMaxWidth()
-        .let { base ->
-            if (previewKind != PreviewKind.None) {
-                base.combinedClickable(
-                    onClick = onToggle,
-                    onLongClick = { openFileExternally(context, file) },
-                )
-            } else {
-                base
-            }
-        }
+        .combinedClickable(
+            onClick = onToggle,
+            onLongClick = { openFileExternally(context, file) },
+        )
         .padding(end = 8.dp)
     Row(
         modifier = rowModifier,
