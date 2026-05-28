@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import org.hogel.tidytalk.data.PromptFileCount
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +72,8 @@ fun AiFlowScreen(
     noIds: Boolean,
     selected: Set<File>,
     selectedBytes: Long,
+    promptFileCount: Int,
+    onPromptFileCountChange: (Int) -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onAnswerChange: (String) -> Unit,
@@ -129,12 +133,17 @@ fun AiFlowScreen(
                 ) {
                     item {
                         Spacer(Modifier.height(8.dp))
-                        PromptSection(prompt, onCopy = {
-                            scope.launch {
-                                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("TidyTalk", prompt)))
-                                snackbarHost.showSnackbar("プロンプトをコピーしました")
-                            }
-                        })
+                        PromptSection(
+                            prompt = prompt,
+                            fileCount = promptFileCount,
+                            onFileCountChange = onPromptFileCountChange,
+                            onCopy = {
+                                scope.launch {
+                                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("TidyTalk", prompt)))
+                                    snackbarHost.showSnackbar("プロンプトをコピーしました")
+                                }
+                            },
+                        )
                     }
                     item {
                         AnswerSection(
@@ -182,8 +191,14 @@ fun AiFlowScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PromptSection(prompt: String, onCopy: () -> Unit) {
+private fun PromptSection(
+    prompt: String,
+    fileCount: Int,
+    onFileCountChange: (Int) -> Unit,
+    onCopy: () -> Unit,
+) {
     Column {
         Text("1. 生成プロンプト", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
@@ -192,6 +207,20 @@ private fun PromptSection(prompt: String, onCopy: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("ファイル数", style = MaterialTheme.typography.bodyMedium)
+            PromptFileCount.PRESETS.forEach { n ->
+                FilterChip(
+                    selected = n == fileCount,
+                    onClick = { onFileCountChange(n) },
+                    label = { Text("$n") },
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Card {
             SelectionContainer {
