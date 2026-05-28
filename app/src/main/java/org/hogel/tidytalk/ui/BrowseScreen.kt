@@ -54,6 +54,7 @@ fun BrowseScreen(
     onToggleSelect: (File) -> Unit,
     onRefresh: () -> Unit,
     onDelete: () -> Unit,
+    onOpenAi: () -> Unit,
 ) {
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
@@ -68,6 +69,7 @@ fun BrowseScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = onOpenAi) { Text("AI 掃除") }
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Filled.Refresh, contentDescription = "再読み込み")
                     }

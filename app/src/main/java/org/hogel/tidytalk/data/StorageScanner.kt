@@ -43,6 +43,14 @@ object StorageScanner {
         return StorageCategory(label = label, dir = dir, totalBytes = bytes, fileCount = count)
     }
 
+    /** Files anywhere under [dir], largest first, capped at [limit]. */
+    fun topFilesByBytes(dir: File, limit: Int): List<File> =
+        dir.walkTopDown()
+            .filter { it.isFile }
+            .sortedByDescending { it.length() }
+            .take(limit)
+            .toList()
+
     /** Direct children of [dir] as entries, largest first. */
     fun listEntries(dir: File): List<StorageEntry> {
         val children = dir.listFiles() ?: return emptyList()

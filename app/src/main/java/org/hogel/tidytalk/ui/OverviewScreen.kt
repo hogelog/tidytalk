@@ -24,6 +24,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,6 +43,7 @@ fun OverviewScreen(
     loading: Boolean,
     onOpenRoot: () -> Unit,
     onOpenCategory: (StorageCategory) -> Unit,
+    onOpenCategoryAi: (StorageCategory) -> Unit,
     onRefresh: () -> Unit,
 ) {
     Scaffold(
@@ -70,7 +72,11 @@ fun OverviewScreen(
                 Text("カテゴリ", style = MaterialTheme.typography.titleMedium)
             }
             items(categories, key = { it.dir.path }) { category ->
-                CategoryRow(category, onClick = { onOpenCategory(category) })
+                CategoryRow(
+                    category = category,
+                    onClick = { onOpenCategory(category) },
+                    onAiClick = { onOpenCategoryAi(category) },
+                )
             }
             if (loading) {
                 item {
@@ -118,16 +124,20 @@ private fun DeviceCard(device: DeviceStorage?, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CategoryRow(category: StorageCategory, onClick: () -> Unit) {
+private fun CategoryRow(
+    category: StorageCategory,
+    onClick: () -> Unit,
+    onAiClick: () -> Unit,
+) {
     val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
                     category.label,
                     style = MaterialTheme.typography.bodyLarge,
@@ -140,6 +150,7 @@ private fun CategoryRow(category: StorageCategory, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TextButton(onClick = onAiClick) { Text("AI 掃除") }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
         }
     }
