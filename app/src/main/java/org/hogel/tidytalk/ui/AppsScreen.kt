@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.hogel.tidytalk.data.AppEntry
+import org.hogel.tidytalk.data.lastUsedSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -172,10 +173,18 @@ private fun AppRow(app: AppEntry, onOpenSettings: () -> Unit) {
 }
 
 private fun appSizeSummary(context: Context, app: AppEntry): String {
-    if (app.totalBytes == 0L) return "サイズ不明"
-    val total = formatSize(context, app.totalBytes)
-    val cache = if (app.cacheBytes > 0) " (キャッシュ ${formatSize(context, app.cacheBytes)})" else ""
-    return "合計 $total$cache"
+    val parts = mutableListOf<String>()
+    if (app.totalBytes == 0L) {
+        parts += "サイズ不明"
+    } else {
+        val total = formatSize(context, app.totalBytes)
+        val cache = if (app.cacheBytes > 0) " (キャッシュ ${formatSize(context, app.cacheBytes)})" else ""
+        parts += "合計 $total$cache"
+    }
+    if (app.lastUsedMillis != null) {
+        parts += "最終使用 " + lastUsedSummary(app.lastUsedMillis, System.currentTimeMillis())
+    }
+    return parts.joinToString(" ・ ")
 }
 
 @Composable

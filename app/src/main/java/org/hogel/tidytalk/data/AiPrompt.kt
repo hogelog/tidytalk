@@ -32,23 +32,42 @@ const val DEFAULT_AI_INSTRUCTION =
 /** Default instruction text for the installed-apps AI flow. */
 const val DEFAULT_APPS_AI_INSTRUCTION =
     "TidyTalk からの掃除相談です。以下のインストール済みアプリ一覧から、\n" +
-        "アンインストールしても良さそうなもの（使ってなさそうな大きいアプリ、\n" +
-        "重複機能のアプリ、長く触っていないと思われるアプリ等）を判断してください。\n" +
+        "アンインストールしても良さそうなもの（容量が大きいのに長く使ってないアプリ、\n" +
+        "重複機能のアプリ等）を判断してください。各行に容量と最終使用日を載せています。\n" +
         "回答は、アンインストール推奨アプリの番号 ID をカンマか改行区切りで\n" +
         "コードブロック (```...```) に入れて返してください。理由のコメントは自由です。"
+
+/**
+ * Formats a last-used timestamp as a coarse "Nか月前" / "Nか月前" / "1年以上未使用" string
+ * suited for the AI prompt. Returns "使用履歴なし" when the timestamp is null (permission
+ * not granted, or the app simply isn't in the usage map).
+ */
+fun lastUsedSummary(lastUsedMillis: Long?, nowMillis: Long): String {
+    if (lastUsedMillis == null) return "使用履歴なし"
+    val days = ((nowMillis - lastUsedMillis) / (24L * 60 * 60 * 1000)).coerceAtLeast(0)
+    return when {
+        days < 1 -> "今日使用"
+        days < 7 -> "${days}日前"
+        days < 60 -> "${days}日前"
+        days < 365 -> "${days / 30}か月前"
+        else -> "1年以上前"
+    }
+}
 
 /**
  * Builds the prompt listing installed apps with 1-based IDs. The format mirrors
  * [buildAiPrompt] so the parsing path ([parseAnswerIds]) is shared.
  */
 fun buildAppsAiPrompt(instruction: String, apps: List<AppEntry>): String {
+    val now = System.currentTimeMillis()
     return buildString {
         append(instruction.trimEnd())
         append("\n\n")
         append("対象: インストール済みアプリ（容量上位 ${apps.size} 件まで）\n")
         append("--\n")
         apps.forEachIndexed { i, app ->
-            append("[${i + 1}] ${humanBytes(app.totalBytes)}  ${app.label}  (${app.packageName})\n")
+            val used = lastUsedSummary(app.lastUsedMillis, now)
+            append("[${i + 1}] ${humanBytes(app.totalBytes)}  最終使用 $used  ${app.label}  (${app.packageName})\n")
         }
     }
 }

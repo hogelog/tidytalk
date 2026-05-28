@@ -2,6 +2,7 @@ package org.hogel.tidytalk.data
 
 import android.app.AppOpsManager
 import android.app.usage.StorageStatsManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Process
@@ -37,6 +38,7 @@ object AppScanner {
         val ssm = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
         val user = Process.myUserHandle()
         val hasStats = hasUsageStatsPermission(context)
+        val lastUsed = if (hasStats) queryLastUsed(context) else emptyMap()
         return pm.getInstalledApplications(0)
             .filter { !it.isSystemApp() || it.isUpdatedSystemApp() }
             .map { info ->
@@ -46,9 +48,27 @@ object AppScanner {
                 } else {
                     Triple(apkSize(info), 0L, 0L)
                 }
-                AppEntry(info.packageName, label, app, data, cache)
+                AppEntry(
+                    packageName = info.packageName,
+                    label = label,
+                    appBytes = app,
+                    dataBytes = data,
+                    cacheBytes = cache,
+                    lastUsedMillis = lastUsed[info.packageName]?.takeIf { it > 0L },
+                )
             }
             .sortedByDescending { it.totalBytes }
+    }
+
+    /** packageName -> last foreground-use epoch millis, over the past year. */
+    private fun queryLastUsed(context: Context): Map<String, Long> = try {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        val from = now - 365L * 24 * 60 * 60 * 1000
+        usm.queryAndAggregateUsageStats(from, now).mapValues { it.value.lastTimeUsed }
+    } catch (e: Exception) {
+        Log.w("AppScanner", "Failed to query usage stats", e)
+        emptyMap()
     }
 
     private fun queryStats(
