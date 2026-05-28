@@ -78,7 +78,7 @@ fun AppsAiFlowScreen(
     prompt: String,
     answer: String,
     matched: List<InstalledApp>?,
-    invalidIds: List<Int>,
+    invalidIds: List<String>,
     noIds: Boolean,
     selected: Set<String>,
     selectedBytes: Long,
@@ -312,7 +312,7 @@ private fun AnswerField(
 }
 
 @Composable
-private fun ResultsHeader(matchedCount: Int, invalidIds: List<Int>) {
+private fun ResultsHeader(matchedCount: Int, invalidIds: List<String>) {
     Column {
         Text("3. アンインストール候補（人が最終判断）", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
@@ -323,7 +323,7 @@ private fun ResultsHeader(matchedCount: Int, invalidIds: List<Int>) {
         )
         if (invalidIds.isNotEmpty()) {
             Text(
-                "範囲外の ID: ${invalidIds.joinToString(", ")}",
+                "未知の ID: ${invalidIds.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
