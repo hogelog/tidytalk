@@ -58,8 +58,25 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
             onOpenRoot = { vm.openDir(StorageScanner.rootDir()) },
             onOpenCategory = { vm.openDir(it.dir) },
             onOpenCategoryAi = { vm.openAiFlow(it.dir) },
+            onOpenApps = { vm.openApps() },
             onRefresh = vm::refresh,
         )
+
+        Screen.Apps -> {
+            BackHandler { vm.back() }
+            AppsScreen(
+                apps = vm.apps,
+                selected = vm.appsSelected,
+                selectedBytes = vm.appsSelectedBytes,
+                loading = vm.appsLoading,
+                currentUninstall = vm.currentUninstall,
+                onBack = { vm.back() },
+                onRefresh = vm::refresh,
+                onToggleSelect = vm::toggleAppSelect,
+                onRequestUninstall = vm::requestUninstallSelected,
+                onUninstallFinished = vm::onUninstallFinished,
+            )
+        }
 
         is Screen.Browse -> {
             BackHandler { vm.back() }

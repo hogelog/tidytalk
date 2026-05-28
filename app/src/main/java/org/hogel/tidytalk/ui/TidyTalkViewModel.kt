@@ -16,6 +16,8 @@ import kotlinx.coroutines.withContext
 import org.hogel.tidytalk.data.AnswerParseResult
 import org.hogel.tidytalk.data.DEFAULT_AI_INSTRUCTION
 import org.hogel.tidytalk.data.DeviceStorage
+import org.hogel.tidytalk.data.InstalledApp
+import org.hogel.tidytalk.data.InstalledAppsScanner
 import org.hogel.tidytalk.data.PromptFileCount
 import org.hogel.tidytalk.data.StorageCategory
 import org.hogel.tidytalk.data.StorageEntry
@@ -29,6 +31,7 @@ sealed interface Screen {
     data object Overview : Screen
     data class Browse(val dir: File) : Screen
     data class AiFlow(val dir: File) : Screen
+    data object Apps : Screen
 }
 
 class TidyTalkViewModel(application: Application) : AndroidViewModel(application) {
@@ -89,6 +92,18 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     var aiSelected by mutableStateOf<Set<File>>(emptySet())
         private set
 
+    var apps by mutableStateOf<List<InstalledApp>>(emptyList())
+        private set
+    var appsLoading by mutableStateOf(false)
+        private set
+    var appsSelected by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    /** Head of the per-package sequential uninstall queue; `null` when idle. */
+    var currentUninstall by mutableStateOf<String?>(null)
+        private set
+    private var uninstallQueue: List<String> = emptyList()
+
     private var loadJob: Job? = null
     private var started = false
 
@@ -128,6 +143,12 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         loadAiFlow(dir)
     }
 
+    fun openApps() {
+        backStack.add(Screen.Apps)
+        screen = backStack.last()
+        loadApps()
+    }
+
     /** Pops one level. Returns false when already at the root (let the system handle back). */
     fun back(): Boolean {
         if (backStack.size <= 1) return false
@@ -144,6 +165,7 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             Screen.Overview -> loadOverview()
             is Screen.Browse -> loadBrowse(s.dir)
             is Screen.AiFlow -> loadAiFlow(s.dir)
+            Screen.Apps -> loadApps()
         }
     }
 
@@ -294,6 +316,50 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             withContext(Dispatchers.IO) { targets.forEach { it.deleteRecursively() } }
             selected = emptySet()
             reloadCurrent()
+        }
+    }
+
+    private fun loadApps() {
+        loadJob?.cancel()
+        appsLoading = true
+        apps = emptyList()
+        appsSelected = emptySet()
+        loadJob = viewModelScope.launch {
+            apps = withContext(Dispatchers.IO) {
+                InstalledAppsScanner.loadInstalledApps(getApplication())
+            }
+            appsLoading = false
+        }
+    }
+
+    fun toggleAppSelect(packageName: String) {
+        appsSelected = if (packageName in appsSelected) {
+            appsSelected - packageName
+        } else {
+            appsSelected + packageName
+        }
+    }
+
+    val appsSelectedBytes: Long
+        get() = apps.filter { it.packageName in appsSelected }.sumOf { it.sizeBytes }
+
+    /** Queues all selected packages and surfaces the first via [currentUninstall]. */
+    fun requestUninstallSelected() {
+        if (appsSelected.isEmpty() || currentUninstall != null) return
+        uninstallQueue = appsSelected.toList()
+        currentUninstall = uninstallQueue.first()
+    }
+
+    /** Called after the system uninstall dialog returns (regardless of user choice). */
+    fun onUninstallFinished() {
+        if (uninstallQueue.isEmpty()) return
+        val rest = uninstallQueue.drop(1)
+        uninstallQueue = rest
+        currentUninstall = rest.firstOrNull()
+        if (rest.isEmpty()) {
+            // Some or all may have actually been removed; the list refresh is the source of truth.
+            appsSelected = emptySet()
+            loadApps()
         }
     }
 }

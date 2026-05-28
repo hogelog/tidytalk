@@ -44,6 +44,7 @@ fun OverviewScreen(
     onOpenRoot: () -> Unit,
     onOpenCategory: (StorageCategory) -> Unit,
     onOpenCategoryAi: (StorageCategory) -> Unit,
+    onOpenApps: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Scaffold(
@@ -68,6 +69,8 @@ fun OverviewScreen(
             item {
                 Spacer(Modifier.height(8.dp))
                 DeviceCard(device, onClick = onOpenRoot)
+                Spacer(Modifier.height(8.dp))
+                AppsCard(onClick = onOpenApps)
                 Spacer(Modifier.height(8.dp))
                 Text("カテゴリ", style = MaterialTheme.typography.titleMedium)
             }
@@ -119,6 +122,26 @@ private fun DeviceCard(device: DeviceStorage?, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AppsCard(onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("インストール済みアプリ", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "容量降順で並べてアンインストール",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
         }
     }
 }
