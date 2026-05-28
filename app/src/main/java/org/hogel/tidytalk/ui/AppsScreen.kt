@@ -119,10 +119,10 @@ fun AppsScreen(
 private fun UsagePermissionCard(onGrant: () -> Unit) {
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text("サイズ表示には使用状況アクセス許可が必要", style = MaterialTheme.typography.titleSmall)
+            Text("data/cache を含めた正確なサイズを出すには", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
             Text(
-                "OS の制限上、アプリのサイズを取得するには「使用状況へのアクセス」を許可する必要があります。許可してもアプリは閲覧・整理にのみ使います。",
+                "今は APK 本体サイズのみで並べています。「使用状況へのアクセス」を許可すると data/cache も含めた正確なサイズになります。許可しなくてもこの画面と AI 掃除は使えます。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
