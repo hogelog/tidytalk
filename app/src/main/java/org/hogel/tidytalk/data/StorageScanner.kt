@@ -51,6 +51,14 @@ object StorageScanner {
             .take(limit)
             .toList()
 
+    /** Every file under [dir] (no size cap). Used when subsequent filtering happens in memory. */
+    fun allFiles(dir: File): List<File> =
+        dir.walkTopDown().filter { it.isFile }.toList()
+
+    /** Direct subdirectories of [dir], sorted by name. */
+    fun subdirs(dir: File): List<File> =
+        dir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name } ?: emptyList()
+
     /** Direct children of [dir] as entries, largest first. */
     fun listEntries(dir: File): List<StorageEntry> {
         val children = dir.listFiles() ?: return emptyList()

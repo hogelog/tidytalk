@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.hogel.tidytalk.data.AnswerParseResult
+import org.hogel.tidytalk.data.DEFAULT_AI_INSTRUCTION
 import org.hogel.tidytalk.data.DeviceStorage
 import org.hogel.tidytalk.data.PromptFileCount
 import org.hogel.tidytalk.data.StorageCategory
@@ -58,6 +59,18 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         private set
     var aiAnswer by mutableStateOf("")
         private set
+    var aiInstruction by mutableStateOf(DEFAULT_AI_INSTRUCTION)
+        private set
+
+    /** Direct subdirectories of the AI flow's target dir; toggled to scope the prompt. */
+    var aiSubdirs by mutableStateOf<List<File>>(emptyList())
+        private set
+    var aiSubdirEnabled by mutableStateOf<Set<File>>(emptySet())
+        private set
+
+    /** All files under the AI flow's target dir, cached so subdir toggles don't re-scan IO. */
+    private var aiAllFiles: List<File> = emptyList()
+    private var aiDir: File? = null
 
     /** Persisted top-N file count used when generating the AI prompt. */
     var aiPromptFileCount by mutableStateOf(PromptFileCount.DEFAULT)
@@ -97,7 +110,10 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         if (value == aiPromptFileCount) return
         aiPromptFileCount = value
         viewModelScope.launch { settings.setPromptFileCount(value) }
-        if (screen is Screen.AiFlow) reloadCurrent()
+        if (screen is Screen.AiFlow) {
+            rebuildAiPrompt()
+            invalidateAiParse()
+        }
     }
 
     fun openDir(dir: File) {
@@ -158,6 +174,8 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     private fun loadAiFlow(dir: File) {
         loadJob?.cancel()
         aiLoading = true
+        aiDir = dir
+        aiInstruction = DEFAULT_AI_INSTRUCTION
         aiPrompt = ""
         aiAnswer = ""
         aiMatched = null
@@ -165,19 +183,55 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         aiNoIds = false
         aiSelected = emptySet()
         aiSnapshot = emptyList()
+        aiAllFiles = emptyList()
+        aiSubdirs = emptyList()
+        aiSubdirEnabled = emptySet()
         loadJob = viewModelScope.launch {
-            val snapshot = withContext(Dispatchers.IO) {
-                StorageScanner.topFilesByBytes(dir, aiPromptFileCount)
-            }
-            aiSnapshot = snapshot
-            aiPrompt = buildAiPrompt(dir, snapshot)
+            val all = withContext(Dispatchers.IO) { StorageScanner.allFiles(dir) }
+            val subs = withContext(Dispatchers.IO) { StorageScanner.subdirs(dir) }
+            aiAllFiles = all
+            aiSubdirs = subs
+            aiSubdirEnabled = subs.toSet()
+            rebuildAiPrompt()
             aiLoading = false
         }
     }
 
+    /** Recomputes [aiSnapshot] and [aiPrompt] from the current dir, files, subdir filter, and instruction. */
+    private fun rebuildAiPrompt() {
+        val dir = aiDir ?: return
+        val rootPath = dir.absolutePath
+        val enabledPaths = aiSubdirEnabled.map { "${it.absolutePath}/" }
+        val filtered = aiAllFiles.filter { file ->
+            val parentPath = file.parentFile?.absolutePath ?: return@filter false
+            // Files directly under the target dir are always included; deeper files require
+            // their top-level subdir to be enabled.
+            if (parentPath == rootPath) return@filter true
+            enabledPaths.any { file.absolutePath.startsWith(it) }
+        }
+        aiSnapshot = filtered.sortedByDescending { it.length() }.take(aiPromptFileCount)
+        aiPrompt = buildAiPrompt(aiInstruction, dir, aiSnapshot)
+    }
+
+    fun updateAiInstruction(text: String) {
+        aiInstruction = text
+        val dir = aiDir ?: return
+        aiPrompt = buildAiPrompt(text, dir, aiSnapshot)
+    }
+
+    fun toggleAiSubdir(sub: File) {
+        aiSubdirEnabled = if (sub in aiSubdirEnabled) aiSubdirEnabled - sub else aiSubdirEnabled + sub
+        rebuildAiPrompt()
+        // Snapshot's ID mapping changed; drop any prior parse so the next "解析" rebinds.
+        invalidateAiParse()
+    }
+
     fun updateAiAnswer(text: String) {
         aiAnswer = text
-        // Editing the answer invalidates any previous parse.
+        invalidateAiParse()
+    }
+
+    private fun invalidateAiParse() {
         if (aiMatched != null || aiNoIds) {
             aiMatched = null
             aiInvalidIds = emptyList()

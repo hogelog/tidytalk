@@ -67,6 +67,9 @@ fun AiFlowScreen(
     loading: Boolean,
     prompt: String,
     answer: String,
+    instruction: String,
+    subdirs: List<File>,
+    subdirEnabled: Set<File>,
     matched: List<File>?,
     invalidIds: List<Int>,
     noIds: Boolean,
@@ -76,6 +79,8 @@ fun AiFlowScreen(
     onPromptFileCountChange: (Int) -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onInstructionChange: (String) -> Unit,
+    onToggleSubdir: (File) -> Unit,
     onAnswerChange: (String) -> Unit,
     onParse: () -> Unit,
     onToggleSelect: (File) -> Unit,
@@ -133,6 +138,14 @@ fun AiFlowScreen(
                 ) {
                     item {
                         Spacer(Modifier.height(8.dp))
+                        InstructionSection(instruction, onInstructionChange)
+                    }
+                    if (subdirs.isNotEmpty()) {
+                        item {
+                            SubdirsSection(subdirs, subdirEnabled, onToggleSubdir, dir.absolutePath)
+                        }
+                    }
+                    item {
                         PromptSection(
                             prompt = prompt,
                             fileCount = promptFileCount,
@@ -188,6 +201,65 @@ fun AiFlowScreen(
                 TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") }
             },
         )
+    }
+}
+
+@Composable
+private fun InstructionSection(instruction: String, onChange: (String) -> Unit) {
+    Column {
+        Text("前文（AI への指示）", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "プロンプト先頭に付ける文章。AI に伝えたい観点があれば書き換えてください。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = instruction,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+        )
+    }
+}
+
+@Composable
+private fun SubdirsSection(
+    subdirs: List<File>,
+    enabled: Set<File>,
+    onToggle: (File) -> Unit,
+    rootPath: String,
+) {
+    Column {
+        Text("対象サブディレクトリ", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "オフにしたサブディレクトリ配下のファイルはプロンプトに含めません。直下のファイルは常に対象です。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        Card {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                subdirs.forEachIndexed { i, sub ->
+                    val rel = sub.absolutePath.removePrefix("$rootPath/").ifEmpty { sub.name }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = sub in enabled, onCheckedChange = { onToggle(sub) })
+                        Text(
+                            rel,
+                            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (i < subdirs.lastIndex) HorizontalDivider()
+                }
+            }
+        }
     }
 }
 
