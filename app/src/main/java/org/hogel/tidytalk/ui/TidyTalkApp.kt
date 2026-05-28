@@ -55,11 +55,56 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
             device = vm.device,
             categories = vm.categories,
             loading = vm.overviewLoading,
+            appsCount = vm.apps.size,
+            appsTotalBytes = vm.appsTotalBytes,
             onOpenRoot = { vm.openDir(StorageScanner.rootDir()) },
             onOpenCategory = { vm.openDir(it.dir) },
             onOpenCategoryAi = { vm.openAiFlow(it.dir) },
+            onOpenApps = { vm.openApps() },
+            onOpenAppsAi = { vm.openAppsAi() },
             onRefresh = vm::refresh,
         )
+
+        Screen.Apps -> {
+            BackHandler { vm.back() }
+            AppsScreen(
+                apps = vm.apps,
+                selected = vm.appsSelected,
+                selectedBytes = vm.appsSelectedBytes,
+                loading = vm.appsLoading,
+                currentUninstall = vm.currentUninstall,
+                onBack = { vm.back() },
+                onRefresh = vm::refresh,
+                onOpenAi = { vm.openAppsAi() },
+                onToggleSelect = vm::toggleAppSelect,
+                onRequestUninstall = vm::requestUninstallSelected,
+                onUninstallFinished = vm::onUninstallFinished,
+            )
+        }
+
+        Screen.AppsAi -> {
+            BackHandler { vm.back() }
+            AppsAiFlowScreen(
+                loading = vm.appsLoading,
+                instruction = vm.aiAppsInstruction,
+                prompt = vm.aiAppsPrompt,
+                answer = vm.aiAppsAnswer,
+                matched = vm.aiAppsMatched,
+                invalidIds = vm.aiAppsInvalidIds,
+                noIds = vm.aiAppsNoIds,
+                selected = vm.aiAppsSelected,
+                selectedBytes = vm.aiAppsSelectedBytes,
+                currentUninstall = vm.currentUninstall,
+                onBack = { vm.back() },
+                onRefresh = vm::refresh,
+                onInstructionChange = vm::updateAiAppsInstruction,
+                onAnswerChange = vm::updateAiAppsAnswer,
+                onParse = vm::parseAppsAnswer,
+                onToggleSelect = vm::toggleAiAppsSelect,
+                onRequestUninstall = vm::requestUninstallFromAi,
+                onUninstallFinished = vm::onUninstallFinished,
+            )
+        }
 
         is Screen.Browse -> {
             BackHandler { vm.back() }
