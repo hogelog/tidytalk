@@ -1,21 +1,25 @@
 package org.hogel.tidytalk.ui
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.hogel.tidytalk.data.AnswerParseResult
 import org.hogel.tidytalk.data.DeviceStorage
+import org.hogel.tidytalk.data.PromptFileCount
 import org.hogel.tidytalk.data.StorageCategory
 import org.hogel.tidytalk.data.StorageEntry
 import org.hogel.tidytalk.data.StorageScanner
+import org.hogel.tidytalk.data.TidyTalkSettings
 import org.hogel.tidytalk.data.buildAiPrompt
 import org.hogel.tidytalk.data.parseAnswerIds
 import java.io.File
@@ -26,10 +30,9 @@ sealed interface Screen {
     data class AiFlow(val dir: File) : Screen
 }
 
-/** Maximum files listed in an AI cleaning prompt (top-N by size, recursive). */
-private const val AI_PROMPT_FILE_LIMIT = 200
+class TidyTalkViewModel(application: Application) : AndroidViewModel(application) {
 
-class TidyTalkViewModel : ViewModel() {
+    private val settings = TidyTalkSettings(application)
 
     private val backStack = mutableListOf<Screen>(Screen.Overview)
     var screen by mutableStateOf<Screen>(Screen.Overview)
@@ -56,6 +59,10 @@ class TidyTalkViewModel : ViewModel() {
     var aiAnswer by mutableStateOf("")
         private set
 
+    /** Persisted top-N file count used when generating the AI prompt. */
+    var aiPromptFileCount by mutableStateOf(PromptFileCount.DEFAULT)
+        private set
+
     /** index+1 == ID printed in [aiPrompt]; used to resolve parsed IDs back to files. */
     private var aiSnapshot: List<File> = emptyList()
 
@@ -72,11 +79,25 @@ class TidyTalkViewModel : ViewModel() {
     private var loadJob: Job? = null
     private var started = false
 
+    init {
+        viewModelScope.launch {
+            // Snapshot once; chip taps update both state and DataStore so we don't need to observe.
+            aiPromptFileCount = settings.promptFileCount.first()
+        }
+    }
+
     /** Called once after the storage permission is granted. */
     fun start() {
         if (started) return
         started = true
         loadOverview()
+    }
+
+    fun updateAiPromptFileCount(value: Int) {
+        if (value == aiPromptFileCount) return
+        aiPromptFileCount = value
+        viewModelScope.launch { settings.setPromptFileCount(value) }
+        if (screen is Screen.AiFlow) reloadCurrent()
     }
 
     fun openDir(dir: File) {
@@ -146,7 +167,7 @@ class TidyTalkViewModel : ViewModel() {
         aiSnapshot = emptyList()
         loadJob = viewModelScope.launch {
             val snapshot = withContext(Dispatchers.IO) {
-                StorageScanner.topFilesByBytes(dir, AI_PROMPT_FILE_LIMIT)
+                StorageScanner.topFilesByBytes(dir, aiPromptFileCount)
             }
             aiSnapshot = snapshot
             aiPrompt = buildAiPrompt(dir, snapshot)
