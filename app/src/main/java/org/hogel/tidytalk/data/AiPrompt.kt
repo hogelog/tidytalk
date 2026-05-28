@@ -21,19 +21,25 @@ fun humanBytes(bytes: Long): String {
     return String.format(Locale.US, "%.1f %s", value, units[idx])
 }
 
+/** Default instruction text shown above the auto-generated file list. */
+const val DEFAULT_AI_INSTRUCTION =
+    "TidyTalk からの掃除相談です。以下のファイル一覧から、削除しても良さそうなもの\n" +
+        "（古いダウンロード、明らかなゴミ、重複疑い等）を判断してください。\n" +
+        "回答は、削除推奨ファイルの番号 ID をカンマか改行区切りでコードブロック\n" +
+        "(```...```) に入れて返してください（チャット UI のコピー機能がそのまま\n" +
+        "使えます）。理由のコメントは自由です。"
+
 /**
- * Builds the prompt the user copy-pastes to their chat AI. Each file gets a
- * 1-based ID; the AI is asked to echo IDs to delete inside a fenced code block.
+ * Builds the prompt the user copy-pastes to their chat AI. [instruction] is the
+ * editable lead-in; the auto-generated file list follows with 1-based IDs the
+ * AI echoes back inside a fenced code block.
  */
-fun buildAiPrompt(targetDir: File, files: List<File>): String {
+fun buildAiPrompt(instruction: String, targetDir: File, files: List<File>): String {
     val rootPath = targetDir.absolutePath
     val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     return buildString {
-        append("TidyTalk からの掃除相談です。以下のファイル一覧から、削除しても良さそうなもの\n")
-        append("（古いダウンロード、明らかなゴミ、重複疑い等）を判断してください。\n")
-        append("回答は、削除推奨ファイルの番号 ID をカンマか改行区切りでコードブロック\n")
-        append("(```...```) に入れて返してください（チャット UI のコピー機能がそのまま\n")
-        append("使えます）。理由のコメントは自由です。\n\n")
+        append(instruction.trimEnd())
+        append("\n\n")
         append("対象: ${targetDir.name}（容量上位 ${files.size} 件まで）\n")
         append("--\n")
         files.forEachIndexed { i, f ->
