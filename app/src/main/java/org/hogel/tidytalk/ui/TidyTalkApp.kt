@@ -75,6 +75,7 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
                 currentUninstall = vm.currentUninstall,
                 onBack = { vm.back() },
                 onRefresh = vm::refresh,
+                onOpenAi = { vm.openAppsAi() },
                 onToggleSelect = vm::toggleAppSelect,
                 onRequestUninstall = vm::requestUninstallSelected,
                 onUninstallFinished = vm::onUninstallFinished,

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -31,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -60,6 +62,7 @@ fun AppsScreen(
     currentUninstall: String?,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenAi: () -> Unit,
     onToggleSelect: (String) -> Unit,
     onRequestUninstall: () -> Unit,
     onUninstallFinished: () -> Unit,
@@ -87,28 +90,37 @@ fun AppsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("インストール済みアプリ") },
+                title = { Text("アプリ") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                     }
                 },
                 actions = {
-                    if (hasUsage && selected.isNotEmpty()) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(end = 8.dp),
-                        ) {
-                            Text(
-                                "${selected.size} 件 ・ ${formatSize(context, selectedBytes)}",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Button(onClick = { confirmUninstall = true }) { Text("アンインストール") }
-                        }
+                    TextButton(onClick = onOpenAi) { Text("AI 掃除") }
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "再読み込み")
                     }
                 },
             )
+        },
+        bottomBar = {
+            if (hasUsage && selected.isNotEmpty()) {
+                Surface(tonalElevation = 3.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${selected.size} 件 ・ ${formatSize(context, selectedBytes)}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Button(onClick = { confirmUninstall = true }) { Text("アンインストール") }
+                    }
+                }
+            }
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
