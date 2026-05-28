@@ -14,7 +14,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.hogel.tidytalk.data.AnswerParseResult
+import org.hogel.tidytalk.data.AppEntry
+import org.hogel.tidytalk.data.AppScanner
 import org.hogel.tidytalk.data.DEFAULT_AI_INSTRUCTION
+import org.hogel.tidytalk.data.DEFAULT_APPS_AI_INSTRUCTION
 import org.hogel.tidytalk.data.DeviceStorage
 import org.hogel.tidytalk.data.PromptFileCount
 import org.hogel.tidytalk.data.StorageCategory
@@ -22,6 +25,7 @@ import org.hogel.tidytalk.data.StorageEntry
 import org.hogel.tidytalk.data.StorageScanner
 import org.hogel.tidytalk.data.TidyTalkSettings
 import org.hogel.tidytalk.data.buildAiPrompt
+import org.hogel.tidytalk.data.buildAppsAiPrompt
 import org.hogel.tidytalk.data.parseAnswerIds
 import java.io.File
 
@@ -29,6 +33,8 @@ sealed interface Screen {
     data object Overview : Screen
     data class Browse(val dir: File) : Screen
     data class AiFlow(val dir: File) : Screen
+    data object Apps : Screen
+    data object AppsAi : Screen
 }
 
 class TidyTalkViewModel(application: Application) : AndroidViewModel(application) {
@@ -89,6 +95,34 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
     var aiSelected by mutableStateOf<Set<File>>(emptySet())
         private set
 
+    var apps by mutableStateOf<List<AppEntry>>(emptyList())
+        private set
+    var appsLoading by mutableStateOf(false)
+        private set
+    var appsUsagePermission by mutableStateOf(false)
+        private set
+
+    var appsAiLoading by mutableStateOf(false)
+        private set
+    var appsAiPrompt by mutableStateOf("")
+        private set
+    var appsAiAnswer by mutableStateOf("")
+        private set
+    var appsAiInstruction by mutableStateOf(DEFAULT_APPS_AI_INSTRUCTION)
+        private set
+
+    /** index+1 == ID in [appsAiPrompt]. */
+    private var appsAiSnapshot: List<AppEntry> = emptyList()
+
+    var appsAiMatched by mutableStateOf<List<AppEntry>?>(null)
+        private set
+    var appsAiInvalidIds by mutableStateOf<List<Int>>(emptyList())
+        private set
+    var appsAiNoIds by mutableStateOf(false)
+        private set
+    var appsAiSelected by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     private var loadJob: Job? = null
     private var started = false
 
@@ -110,9 +144,16 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         if (value == aiPromptFileCount) return
         aiPromptFileCount = value
         viewModelScope.launch { settings.setPromptFileCount(value) }
-        if (screen is Screen.AiFlow) {
-            rebuildAiPrompt()
-            invalidateAiParse()
+        when (screen) {
+            is Screen.AiFlow -> {
+                rebuildAiPrompt()
+                invalidateAiParse()
+            }
+            Screen.AppsAi -> {
+                rebuildAppsAiPrompt()
+                invalidateAppsAiParse()
+            }
+            else -> Unit
         }
     }
 
@@ -128,6 +169,18 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
         loadAiFlow(dir)
     }
 
+    fun openApps() {
+        backStack.add(Screen.Apps)
+        screen = backStack.last()
+        loadApps()
+    }
+
+    fun openAppsAi() {
+        backStack.add(Screen.AppsAi)
+        screen = backStack.last()
+        loadAppsAi()
+    }
+
     /** Pops one level. Returns false when already at the root (let the system handle back). */
     fun back(): Boolean {
         if (backStack.size <= 1) return false
@@ -139,11 +192,26 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
 
     fun refresh() = reloadCurrent()
 
+    /**
+     * Re-check the usage-access permission after returning from the system settings screen.
+     * When it flips on while the Apps screen is visible, reload so sizes appear.
+     */
+    fun refreshUsagePermission() {
+        val granted = AppScanner.hasUsageStatsPermission(getApplication())
+        val gainedAccess = granted && !appsUsagePermission
+        appsUsagePermission = granted
+        if (gainedAccess && screen == Screen.Apps) {
+            loadApps()
+        }
+    }
+
     private fun reloadCurrent() {
         when (val s = screen) {
             Screen.Overview -> loadOverview()
             is Screen.Browse -> loadBrowse(s.dir)
             is Screen.AiFlow -> loadAiFlow(s.dir)
+            Screen.Apps -> loadApps()
+            Screen.AppsAi -> loadAppsAi()
         }
     }
 
@@ -295,5 +363,83 @@ class TidyTalkViewModel(application: Application) : AndroidViewModel(application
             selected = emptySet()
             reloadCurrent()
         }
+    }
+
+    private fun loadApps() {
+        loadJob?.cancel()
+        appsLoading = true
+        appsUsagePermission = AppScanner.hasUsageStatsPermission(getApplication())
+        loadJob = viewModelScope.launch {
+            apps = withContext(Dispatchers.IO) { AppScanner.listUserApps(getApplication()) }
+            appsLoading = false
+        }
+    }
+
+    private fun loadAppsAi() {
+        loadJob?.cancel()
+        appsAiLoading = true
+        appsAiInstruction = DEFAULT_APPS_AI_INSTRUCTION
+        appsAiPrompt = ""
+        appsAiAnswer = ""
+        appsAiMatched = null
+        appsAiInvalidIds = emptyList()
+        appsAiNoIds = false
+        appsAiSelected = emptySet()
+        appsAiSnapshot = emptyList()
+        loadJob = viewModelScope.launch {
+            // Apps state may already be populated from the Apps screen; refresh in case.
+            if (apps.isEmpty()) {
+                apps = withContext(Dispatchers.IO) { AppScanner.listUserApps(getApplication()) }
+            }
+            rebuildAppsAiPrompt()
+            appsAiLoading = false
+        }
+    }
+
+    private fun rebuildAppsAiPrompt() {
+        appsAiSnapshot = apps.take(aiPromptFileCount)
+        appsAiPrompt = buildAppsAiPrompt(appsAiInstruction, appsAiSnapshot)
+    }
+
+    fun updateAppsAiInstruction(text: String) {
+        appsAiInstruction = text
+        appsAiPrompt = buildAppsAiPrompt(text, appsAiSnapshot)
+    }
+
+    fun updateAppsAiAnswer(text: String) {
+        appsAiAnswer = text
+        invalidateAppsAiParse()
+    }
+
+    private fun invalidateAppsAiParse() {
+        if (appsAiMatched != null || appsAiNoIds) {
+            appsAiMatched = null
+            appsAiInvalidIds = emptyList()
+            appsAiNoIds = false
+            appsAiSelected = emptySet()
+        }
+    }
+
+    fun parseAppsAnswer() {
+        when (val result = parseAnswerIds(appsAiAnswer, appsAiSnapshot.size)) {
+            AnswerParseResult.NoIds -> {
+                appsAiNoIds = true
+                appsAiMatched = null
+                appsAiInvalidIds = emptyList()
+                appsAiSelected = emptySet()
+            }
+
+            is AnswerParseResult.Ok -> {
+                val matched = result.validIds.map { appsAiSnapshot[it - 1] }
+                appsAiMatched = matched
+                appsAiInvalidIds = result.invalidIds
+                appsAiNoIds = false
+                appsAiSelected = matched.map { it.packageName }.toSet()
+            }
+        }
+    }
+
+    fun toggleAppsAiSelect(pkg: String) {
+        appsAiSelected = if (pkg in appsAiSelected) appsAiSelected - pkg else appsAiSelected + pkg
     }
 }

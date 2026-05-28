@@ -44,6 +44,7 @@ fun OverviewScreen(
     onOpenRoot: () -> Unit,
     onOpenCategory: (StorageCategory) -> Unit,
     onOpenCategoryAi: (StorageCategory) -> Unit,
+    onOpenApps: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Scaffold(
@@ -77,6 +78,11 @@ fun OverviewScreen(
                     onClick = { onOpenCategory(category) },
                     onAiClick = { onOpenCategoryAi(category) },
                 )
+            }
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text("アプリ", style = MaterialTheme.typography.titleMedium)
+                AppsRow(onClick = onOpenApps)
             }
             if (loading) {
                 item {
@@ -151,6 +157,33 @@ private fun CategoryRow(
                 )
             }
             TextButton(onClick = onAiClick) { Text("AI 掃除") }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+private fun AppsRow(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                Text(
+                    "インストール済みアプリ",
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "サイズ順に並べて、OS のアプリ情報画面に飛んでアンインストール",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
         }
     }

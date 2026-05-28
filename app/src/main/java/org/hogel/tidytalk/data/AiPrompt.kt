@@ -29,6 +29,30 @@ const val DEFAULT_AI_INSTRUCTION =
         "(```...```) に入れて返してください（チャット UI のコピー機能がそのまま\n" +
         "使えます）。理由のコメントは自由です。"
 
+/** Default instruction text for the installed-apps AI flow. */
+const val DEFAULT_APPS_AI_INSTRUCTION =
+    "TidyTalk からの掃除相談です。以下のインストール済みアプリ一覧から、\n" +
+        "アンインストールしても良さそうなもの（使ってなさそうな大きいアプリ、\n" +
+        "重複機能のアプリ、長く触っていないと思われるアプリ等）を判断してください。\n" +
+        "回答は、アンインストール推奨アプリの番号 ID をカンマか改行区切りで\n" +
+        "コードブロック (```...```) に入れて返してください。理由のコメントは自由です。"
+
+/**
+ * Builds the prompt listing installed apps with 1-based IDs. The format mirrors
+ * [buildAiPrompt] so the parsing path ([parseAnswerIds]) is shared.
+ */
+fun buildAppsAiPrompt(instruction: String, apps: List<AppEntry>): String {
+    return buildString {
+        append(instruction.trimEnd())
+        append("\n\n")
+        append("対象: インストール済みアプリ（容量上位 ${apps.size} 件まで）\n")
+        append("--\n")
+        apps.forEachIndexed { i, app ->
+            append("[${i + 1}] ${humanBytes(app.totalBytes)}  ${app.label}  (${app.packageName})\n")
+        }
+    }
+}
+
 /**
  * Builds the prompt the user copy-pastes to their chat AI. [instruction] is the
  * editable lead-in; the auto-generated file list follows with 1-based IDs the

@@ -50,6 +50,13 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
 
     LaunchedEffect(Unit) { vm.start() }
 
+    val usageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        vm.refreshUsagePermission()
+    }
+    val openUsageSettings: () -> Unit = {
+        usageLauncher.launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+    }
+
     when (val screen = vm.screen) {
         Screen.Overview -> OverviewScreen(
             device = vm.device,
@@ -58,6 +65,7 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
             onOpenRoot = { vm.openDir(StorageScanner.rootDir()) },
             onOpenCategory = { vm.openDir(it.dir) },
             onOpenCategoryAi = { vm.openAiFlow(it.dir) },
+            onOpenApps = vm::openApps,
             onRefresh = vm::refresh,
         )
 
@@ -103,6 +111,42 @@ fun TidyTalkApp(vm: TidyTalkViewModel = viewModel()) {
                 onParse = vm::parseAnswer,
                 onToggleSelect = vm::toggleAiSelect,
                 onDelete = vm::deleteAiSelected,
+            )
+        }
+
+        Screen.Apps -> {
+            BackHandler { vm.back() }
+            AppsScreen(
+                apps = vm.apps,
+                loading = vm.appsLoading,
+                usagePermission = vm.appsUsagePermission,
+                onBack = { vm.back() },
+                onRefresh = vm::refresh,
+                onOpenAi = vm::openAppsAi,
+                onGrantUsage = openUsageSettings,
+            )
+        }
+
+        Screen.AppsAi -> {
+            BackHandler { vm.back() }
+            AppsAiFlowScreen(
+                loading = vm.appsAiLoading,
+                prompt = vm.appsAiPrompt,
+                answer = vm.appsAiAnswer,
+                instruction = vm.appsAiInstruction,
+                matched = vm.appsAiMatched,
+                invalidIds = vm.appsAiInvalidIds,
+                noIds = vm.appsAiNoIds,
+                selected = vm.appsAiSelected,
+                promptFileCount = vm.aiPromptFileCount,
+                onPromptFileCountChange = vm::updateAiPromptFileCount,
+                onBack = { vm.back() },
+                onRefresh = vm::refresh,
+                onInstructionChange = vm::updateAppsAiInstruction,
+                onAnswerChange = vm::updateAppsAiAnswer,
+                onParse = vm::parseAppsAnswer,
+                onToggleSelect = vm::toggleAppsAiSelect,
+                onOpenAppDetails = { openAppDetails(context, it) },
             )
         }
     }
