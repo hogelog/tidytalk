@@ -32,8 +32,8 @@ fun buildAiPrompt(targetDir: File, files: List<File>): String {
         append("TidyTalk からの掃除相談です。以下のファイル一覧から、削除しても良さそうなもの\n")
         append("（古いダウンロード、明らかなゴミ、重複疑い等）を判断してください。\n")
         append("回答は、削除推奨ファイルの番号 ID をカンマか改行区切りでコードブロック\n")
-        append("(```...```) に入れて返してください。理由のコメントは自由ですが、ID の\n")
-        append("コードブロックは必ず含めてください。\n\n")
+        append("(```...```) に入れて返してください（チャット UI のコピー機能がそのまま\n")
+        append("使えます）。理由のコメントは自由です。\n\n")
         append("対象: ${targetDir.name}（容量上位 ${files.size} 件まで）\n")
         append("--\n")
         files.forEachIndexed { i, f ->
@@ -46,7 +46,7 @@ fun buildAiPrompt(targetDir: File, files: List<File>): String {
 }
 
 sealed interface AnswerParseResult {
-    data object NoCodeBlock : AnswerParseResult
+    data object NoIds : AnswerParseResult
     data class Ok(val validIds: List<Int>, val invalidIds: List<Int>) : AnswerParseResult
 }
 
@@ -54,12 +54,16 @@ private val codeBlockRegex = Regex("""```[\s\S]*?```""")
 private val intRegex = Regex("""\d+""")
 
 /**
- * Pulls IDs out of the first fenced code block in [answer]. IDs outside
- * `1..maxId` are reported as invalid so the UI can show what was dropped.
+ * Pulls IDs out of [answer]. Prefers the first fenced code block (the format
+ * the prompt asks the AI to use); falls back to scanning the whole text so
+ * that pasting just the code-block contents — what most chat UIs' Copy
+ * buttons return — also works. IDs outside `1..maxId` are reported as invalid
+ * so the UI can show what was dropped.
  */
 fun parseAnswerIds(answer: String, maxId: Int): AnswerParseResult {
-    val block = codeBlockRegex.find(answer) ?: return AnswerParseResult.NoCodeBlock
-    val all = intRegex.findAll(block.value).mapNotNull { it.value.toIntOrNull() }.distinct().toList()
+    val source = codeBlockRegex.find(answer)?.value ?: answer
+    val all = intRegex.findAll(source).mapNotNull { it.value.toIntOrNull() }.distinct().toList()
+    if (all.isEmpty()) return AnswerParseResult.NoIds
     val (valid, invalid) = all.partition { it in 1..maxId }
     return AnswerParseResult.Ok(valid, invalid)
 }

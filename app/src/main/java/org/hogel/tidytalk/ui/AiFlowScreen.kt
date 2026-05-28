@@ -66,7 +66,7 @@ fun AiFlowScreen(
     answer: String,
     matched: List<File>?,
     invalidIds: List<Int>,
-    noCodeBlock: Boolean,
+    noIds: Boolean,
     selected: Set<File>,
     selectedBytes: Long,
     onBack: () -> Unit,
@@ -139,7 +139,7 @@ fun AiFlowScreen(
                         AnswerSection(
                             answer = answer,
                             onAnswerChange = onAnswerChange,
-                            noCodeBlock = noCodeBlock,
+                            noIds = noIds,
                             onParse = onParse,
                         )
                     }
@@ -215,7 +215,7 @@ private fun PromptSection(prompt: String, onCopy: () -> Unit) {
 private fun AnswerSection(
     answer: String,
     onAnswerChange: (String) -> Unit,
-    noCodeBlock: Boolean,
+    noIds: Boolean,
     onParse: () -> Unit,
 ) {
     Column {
@@ -233,9 +233,9 @@ private fun AnswerSection(
             modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
             placeholder = { Text("AI の回答をここに貼り付け") },
         )
-        if (noCodeBlock) {
+        if (noIds) {
             Text(
-                "コードブロック (```...```) が見つかりませんでした。AI の回答に ID リストを ```...``` で囲んで含めてもらってください。",
+                "ID が見つかりませんでした。AI が返した ID リスト（コードブロックの中身でも可）をそのまま貼り付けてください。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 4.dp),

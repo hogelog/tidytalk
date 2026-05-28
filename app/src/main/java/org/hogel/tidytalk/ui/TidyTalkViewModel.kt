@@ -64,7 +64,7 @@ class TidyTalkViewModel : ViewModel() {
         private set
     var aiInvalidIds by mutableStateOf<List<Int>>(emptyList())
         private set
-    var aiNoCodeBlock by mutableStateOf(false)
+    var aiNoIds by mutableStateOf(false)
         private set
     var aiSelected by mutableStateOf<Set<File>>(emptySet())
         private set
@@ -141,7 +141,7 @@ class TidyTalkViewModel : ViewModel() {
         aiAnswer = ""
         aiMatched = null
         aiInvalidIds = emptyList()
-        aiNoCodeBlock = false
+        aiNoIds = false
         aiSelected = emptySet()
         aiSnapshot = emptyList()
         loadJob = viewModelScope.launch {
@@ -157,18 +157,18 @@ class TidyTalkViewModel : ViewModel() {
     fun updateAiAnswer(text: String) {
         aiAnswer = text
         // Editing the answer invalidates any previous parse.
-        if (aiMatched != null || aiNoCodeBlock) {
+        if (aiMatched != null || aiNoIds) {
             aiMatched = null
             aiInvalidIds = emptyList()
-            aiNoCodeBlock = false
+            aiNoIds = false
             aiSelected = emptySet()
         }
     }
 
     fun parseAnswer() {
         when (val result = parseAnswerIds(aiAnswer, aiSnapshot.size)) {
-            AnswerParseResult.NoCodeBlock -> {
-                aiNoCodeBlock = true
+            AnswerParseResult.NoIds -> {
+                aiNoIds = true
                 aiMatched = null
                 aiInvalidIds = emptyList()
                 aiSelected = emptySet()
@@ -178,7 +178,7 @@ class TidyTalkViewModel : ViewModel() {
                 val files = result.validIds.map { aiSnapshot[it - 1] }
                 aiMatched = files
                 aiInvalidIds = result.invalidIds
-                aiNoCodeBlock = false
+                aiNoIds = false
                 aiSelected = files.toSet()
             }
         }
