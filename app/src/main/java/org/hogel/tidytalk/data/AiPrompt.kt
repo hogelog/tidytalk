@@ -51,6 +51,30 @@ fun buildAiPrompt(instruction: String, targetDir: File, files: List<File>): Stri
     }
 }
 
+/** Default instruction text for the apps AI flow. */
+const val DEFAULT_APPS_AI_INSTRUCTION =
+    "TidyTalk からの掃除相談です。以下のインストール済みアプリ一覧から、\n" +
+        "アンインストールしても良さそうなもの（使っていない、重複、容量が大きすぎる等）\n" +
+        "を判断してください。回答は、アンインストール推奨アプリの番号 ID を\n" +
+        "カンマか改行区切りでコードブロック (```...```) に入れて返してください\n" +
+        "（チャット UI のコピー機能がそのまま使えます）。理由のコメントは自由です。"
+
+/**
+ * Apps version of [buildAiPrompt]. Enumerates installed apps with 1-based IDs
+ * that the AI echoes back inside a fenced code block.
+ */
+fun buildAppsAiPrompt(instruction: String, apps: List<InstalledApp>): String =
+    buildString {
+        append(instruction.trimEnd())
+        append("\n\n")
+        append("対象: インストール済みアプリ ${apps.size} 件\n")
+        append("--\n")
+        apps.forEachIndexed { i, app ->
+            val size = humanBytes(app.sizeBytes)
+            append("[${i + 1}] $size  ${app.packageName}  ${app.label}\n")
+        }
+    }
+
 sealed interface AnswerParseResult {
     data object NoIds : AnswerParseResult
     data class Ok(val validIds: List<Int>, val invalidIds: List<Int>) : AnswerParseResult

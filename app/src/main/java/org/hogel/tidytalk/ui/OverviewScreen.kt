@@ -41,10 +41,13 @@ fun OverviewScreen(
     device: DeviceStorage?,
     categories: List<StorageCategory>,
     loading: Boolean,
+    appsCount: Int,
+    appsTotalBytes: Long,
     onOpenRoot: () -> Unit,
     onOpenCategory: (StorageCategory) -> Unit,
     onOpenCategoryAi: (StorageCategory) -> Unit,
     onOpenApps: () -> Unit,
+    onOpenAppsAi: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Scaffold(
@@ -70,9 +73,15 @@ fun OverviewScreen(
                 Spacer(Modifier.height(8.dp))
                 DeviceCard(device, onClick = onOpenRoot)
                 Spacer(Modifier.height(8.dp))
-                AppsCard(onClick = onOpenApps)
-                Spacer(Modifier.height(8.dp))
                 Text("カテゴリ", style = MaterialTheme.typography.titleMedium)
+            }
+            item {
+                AppsRow(
+                    count = appsCount,
+                    totalBytes = appsTotalBytes,
+                    onClick = onOpenApps,
+                    onAiClick = onOpenAppsAi,
+                )
             }
             items(categories, key = { it.dir.path }) { category ->
                 CategoryRow(
@@ -127,20 +136,33 @@ private fun DeviceCard(device: DeviceStorage?, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AppsCard(onClick: () -> Unit) {
+private fun AppsRow(
+    count: Int,
+    totalBytes: Long,
+    onClick: () -> Unit,
+    onAiClick: () -> Unit,
+) {
+    val context = LocalContext.current
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("インストール済みアプリ", style = MaterialTheme.typography.bodyLarge)
+            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
-                    "容量降順で並べてアンインストール",
+                    "アプリ",
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val subtitle = if (count == 0) "—" else "${formatSize(context, totalBytes)} ・ $count 件"
+                Text(
+                    subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TextButton(onClick = onAiClick) { Text("AI 掃除") }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
         }
     }
