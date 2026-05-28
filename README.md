@@ -7,7 +7,10 @@ on the AI's suggestions — no API key, no cost.
 
 ## Status
 
-Early scaffold: an empty Jetpack Compose app.
+Storage overview is in place: a device-storage summary plus per-category sizes,
+a file browser that drills into directories sorted by size, and manual
+checkbox-based deletion. The AI-driven cleaning flow is next. Requires the
+all-files access permission (`MANAGE_EXTERNAL_STORAGE`).
 
 ## Build
 
