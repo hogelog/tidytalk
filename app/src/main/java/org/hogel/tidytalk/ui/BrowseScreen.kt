@@ -1,6 +1,8 @@
 package org.hogel.tidytalk.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -140,6 +142,7 @@ fun BrowseScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EntryRow(
     entry: StorageEntry,
@@ -149,8 +152,21 @@ private fun EntryRow(
 ) {
     val context = LocalContext.current
     val previewKind = if (entry.isDirectory) PreviewKind.None else previewKindFor(entry.file)
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .let { base ->
+            if (previewKind != PreviewKind.None) {
+                base.combinedClickable(
+                    onClick = onOpen,
+                    onLongClick = { openFileExternally(context, entry.file) },
+                )
+            } else {
+                base.clickable(onClick = onOpen)
+            }
+        }
+        .padding(end = 8.dp)
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(end = 8.dp),
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
