@@ -2,6 +2,7 @@ package org.hogel.tidytalk.data
 
 import android.app.AppOpsManager
 import android.app.usage.StorageStatsManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -12,9 +13,14 @@ data class InstalledApp(
     val packageName: String,
     val label: String,
     val sizeBytes: Long,
+    /** Last foregrounded time per [UsageStatsManager]; `null` when no usage seen in the lookback window. */
+    val lastUsedMillis: Long?,
 )
 
 object InstalledAppsScanner {
+    /** Lookback window for "last used" queries. */
+    private const val LAST_USED_LOOKBACK_DAYS = 365L
+
     /** Whether the user has granted "Usage access" so [loadInstalledApps] can compute sizes. */
     fun hasUsageAccess(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -31,6 +37,7 @@ object InstalledAppsScanner {
         val pm = context.packageManager
         val stats = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
         val user = Process.myUserHandle()
+        val lastUsed = queryLastUsedMap(context)
         @Suppress("DEPRECATION")
         val all = pm.getInstalledApplications(PackageManager.GET_META_DATA)
         return all.asSequence()
@@ -44,10 +51,23 @@ object InstalledAppsScanner {
                     packageName = info.packageName,
                     label = info.loadLabel(pm).toString(),
                     sizeBytes = bytes,
+                    lastUsedMillis = lastUsed[info.packageName],
                 )
             }
             .sortedByDescending { it.sizeBytes }
             .toList()
+    }
+
+    /** Aggregates last-foregrounded time per package over the past [LAST_USED_LOOKBACK_DAYS]. */
+    private fun queryLastUsedMap(context: Context): Map<String, Long> {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val end = System.currentTimeMillis()
+        val begin = end - LAST_USED_LOOKBACK_DAYS * 24L * 60L * 60L * 1000L
+        val stats = runCatching { usm.queryAndAggregateUsageStats(begin, end) }.getOrNull().orEmpty()
+        return stats.mapNotNull { (pkg, s) ->
+            val t = s.lastTimeUsed
+            if (t > 0) pkg to t else null
+        }.toMap()
     }
 
     private fun ApplicationInfo.isSystemApp(): Boolean =
