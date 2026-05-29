@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.github.triplet.play")
 }
 
 val gitShortRev: String = providers.exec {
@@ -10,12 +11,17 @@ val gitShortRev: String = providers.exec {
     isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }.getOrElse("unknown")
 
+fun requireEnv(name: String): String =
+    System.getenv(name)?.takeIf { it.isNotBlank() }
+        ?: error("Required environment variable $name is missing or empty.")
+
 val prNumber: String? = System.getenv("PR_NUMBER")?.takeIf { it.isNotBlank() }
 val releaseVersion: String? = System.getenv("RELEASE_VERSION")?.takeIf { it.isNotBlank() }
 val releaseVersionSuffix: String? = System.getenv("RELEASE_VERSION_SUFFIX")?.takeIf { it.isNotBlank() }
 val baseVersionName = "0.1.0"
 val appVersionName: String = when {
     releaseVersion != null && releaseVersionSuffix != null -> "$releaseVersion-$releaseVersionSuffix"
+    releaseVersion != null -> releaseVersion
     prNumber != null -> "$baseVersionName-pr-$prNumber-$gitShortRev"
     else -> baseVersionName
 }
@@ -98,6 +104,19 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Release signingConfig is wired up only when CI provides the keystore env vars,
+        // so local `assembleDebug` keeps working without release credentials.
+        val releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = requireEnv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = requireEnv("RELEASE_KEY_ALIAS")
+                keyPassword = requireEnv("RELEASE_KEY_PASSWORD")
+            }
+        } else if (releaseVersion != null) {
+            error("RELEASE_VERSION is set but RELEASE_KEYSTORE_PATH is missing; release builds must be signed.")
+        }
     }
 
     buildTypes {
@@ -107,6 +126,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
@@ -123,6 +143,18 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
+    }
+}
+
+play {
+    track.set("internal")
+    releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED)
+
+    // google-github-actions/auth writes the WIF credentials file and exposes its
+    // path via GOOGLE_APPLICATION_CREDENTIALS. GoogleCredentials.fromStream (used
+    // by GPP) accepts both service account keys and external_account (WIF) JSON.
+    System.getenv("GOOGLE_APPLICATION_CREDENTIALS")?.takeIf { it.isNotBlank() }?.let {
+        serviceAccountCredentials.set(file(it))
     }
 }
 
