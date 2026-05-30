@@ -93,6 +93,7 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
+        buildConfigField("String", "GIT_SHORT_REV", "\"$gitShortRev\"")
     }
 
     // Committed debug keystore so debug APKs from different CI runners share a
@@ -132,6 +133,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {

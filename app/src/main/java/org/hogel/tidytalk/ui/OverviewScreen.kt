@@ -30,8 +30,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.hogel.tidytalk.BuildConfig
 import org.hogel.tidytalk.data.DeviceStorage
 import org.hogel.tidytalk.data.StorageCategory
 
@@ -99,6 +101,17 @@ fun OverviewScreen(
                         CircularProgressIndicator()
                     }
                 }
+            }
+            item {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "${BuildConfig.VERSION_NAME}-${BuildConfig.GIT_SHORT_REV}",
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
