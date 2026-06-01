@@ -21,6 +21,11 @@ all-files access permission (`MANAGE_EXTERNAL_STORAGE`).
 Requires JDK 21 and an Android SDK (set `sdk.dir` in `local.properties` or the
 `ANDROID_HOME` environment variable).
 
+## Privacy
+
+TidyTalk has no internet permission and collects no data. See the
+[Privacy Policy](https://hogelog.github.io/tidytalk/privacy.html).
+
 ## License
 
 MIT
