@@ -1,13 +1,15 @@
 package org.hogel.tidytalk.ui
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -172,6 +174,7 @@ fun AppsScreen(
     BackHandler(onBack = onBack)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AppRow(
     app: InstalledApp,
@@ -186,7 +189,10 @@ private fun AppRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .combinedClickable(
+                onClick = onToggle,
+                onLongClick = { context.openAppInfo(app.packageName) },
+            )
             .padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -222,6 +228,14 @@ private fun AppRow(
             )
         }
     }
+}
+
+/** Opens the system App info screen for [packageName]. */
+private fun Context.openAppInfo(packageName: String) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", packageName, null)
+    }
+    startActivity(intent)
 }
 
 @Composable
