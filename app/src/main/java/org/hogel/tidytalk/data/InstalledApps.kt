@@ -12,7 +12,12 @@ import android.os.storage.StorageManager
 data class InstalledApp(
     val packageName: String,
     val label: String,
+    /** APK + user data + cache. */
     val sizeBytes: Long,
+    /** User data only (excludes APK and cache). */
+    val dataBytes: Long,
+    /** Cache only. */
+    val cacheBytes: Long,
     /** Last foregrounded time per [UsageStatsManager]; `null` when no usage seen in the lookback window. */
     val lastUsedMillis: Long?,
 )
@@ -43,14 +48,18 @@ object InstalledAppsScanner {
         return all.asSequence()
             .filter { !it.isSystemApp() }
             .map { info ->
-                val bytes = runCatching {
-                    val s = stats.queryStatsForPackage(StorageManager.UUID_DEFAULT, info.packageName, user)
-                    s.appBytes + s.dataBytes + s.cacheBytes
-                }.getOrDefault(0L)
+                val s = runCatching {
+                    stats.queryStatsForPackage(StorageManager.UUID_DEFAULT, info.packageName, user)
+                }.getOrNull()
+                // StorageStats.dataBytes already includes cacheBytes, so the total is
+                // appBytes + dataBytes and "user data" is dataBytes - cacheBytes.
+                val cache = s?.cacheBytes ?: 0L
                 InstalledApp(
                     packageName = info.packageName,
                     label = info.loadLabel(pm).toString(),
-                    sizeBytes = bytes,
+                    sizeBytes = if (s != null) s.appBytes + s.dataBytes else 0L,
+                    dataBytes = (s?.dataBytes ?: 0L) - cache,
+                    cacheBytes = cache,
                     lastUsedMillis = lastUsed[info.packageName],
                 )
             }
