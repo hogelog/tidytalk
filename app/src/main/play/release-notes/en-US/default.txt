@@ -1,1 +1,3 @@
-- Show the app version in the overview footer
+- Long-press an app to open its system App info screen.
+- See per-app user data and cache sizes in the apps list.
+- The overview footer now shows the app version.
