@@ -7,9 +7,10 @@ on the AI's suggestions — no API key, no cost.
 
 ## Status
 
-Storage overview is in place: a device-storage summary plus per-category sizes,
-a file browser that drills into directories sorted by size, and manual
-checkbox-based deletion. The AI-driven cleaning flow is next. Requires the
+A device-storage summary with per-category sizes, a file browser that drills
+into directories sorted by size, and manual checkbox-based deletion. The
+bring-your-own-AI flow generates a prompt from your files, which you paste into
+any chat AI and paste the answer back to act on its suggestions. Requires the
 all-files access permission (`MANAGE_EXTERNAL_STORAGE`).
 
 ## Build
